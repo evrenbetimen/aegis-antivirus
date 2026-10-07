@@ -1,0 +1,9 @@
+{
+  "version": "2026.10.1",
+  "updated": 0,
+  "sha256": {
+    "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f": "EICAR-Test-File",
+    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff": "Demo.Fake-Threat",
+    "9691b7e95ef1542d6e8fb689e8e022ea4992f289a77e3cbed857cf8b6d320123": "Demo.Known-Payload"
+  }
+}

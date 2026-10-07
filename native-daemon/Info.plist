@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Aegis native system extensions — shared Info.plist template.
+
+	  TWO Xcode targets consume this file, so the per-target sections below are
+	  marked with comments:
+
+	    * AegisShield   -> Endpoint Security system extension
+	                      (com.aegis.antivirus.shield)
+	    * AegisFirewall -> Network Extension / content filter system extension
+	                      (com.aegis.antivirus.firewall)
+
+	  Keep the "common" keys in both targets; for the shield target delete the
+	  NetworkExtension dictionary, for the firewall target keep it and adjust
+	  the NSExtension block as described in its comment.
+
+	  Verified against real world extensions: macOS system extensions use
+	  CFBundlePackageType = SYSX and do NOT require an NSExtension dictionary
+	  (the extension point comes from the entitlements).  The NSExtension block
+	  is kept because it documents the intended extension point; if
+	  `systemextensionsctl` ever reports "Invalid extension configuration",
+	  delete that block first.
+	-->
+
+	<!-- ===== Common keys (both targets) ===== -->
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>SYSX</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Aegis Antivirus</string>
+	<!-- Shown by System Settings when the extension asks for activation. -->
+	<key>NSSystemExtensionUsageDescription</key>
+	<string>Aegis Antivirus, gerçek zamanlı dosya ve ağ koruması için sistem genişletmelerini kullanır.</string>
+
+	<!-- ===== AegisShield: Endpoint Security target ===== -->
+	<!-- For the firewall target change the identifier to
+	     com.apple.system-extension.networkextension (or remove the block). -->
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.system-extension.endpoint-security</string>
+	</dict>
+
+	<!-- ===== AegisFirewall: content filter target ===== -->
+	<!-- NEProviderClasses maps the provider type to the Objective-C runtime
+	     name of the Swift class.  AegisFirewall is pinned with
+	     `@objc(AegisFirewall)` in AegisFirewall.swift, so the value below must
+	     match that name exactly.  Delete this whole dictionary in the shield
+	     target. -->
+	<key>NetworkExtension</key>
+	<dict>
+		<key>NEProviderClasses</key>
+		<dict>
+			<key>com.apple.networkextension.filter-data</key>
+			<string>AegisFirewall</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

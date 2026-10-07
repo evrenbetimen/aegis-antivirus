@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <title>Aegis Security</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- ============ SIDEBAR ============ -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-logo">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M12 2l8 3.5v5.6c0 5-3.4 9.4-8 10.9-4.6-1.5-8-5.9-8-10.9V5.5L12 2z"/>
+            <path d="M9 12l2.2 2.2L15.5 10" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-name" data-i18n="app.name">AEGIS</span>
+          <span class="brand-sub" data-i18n="app.sub">Security Suite</span>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <button class="nav-item active" data-page="dashboard">
+          <svg viewBox="0 0 24 24"><path d="M3 12l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
+          <span data-i18n="nav.dashboard">Genel Bakış</span>
+        </button>
+        <button class="nav-item" data-page="scan">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <span data-i18n="nav.scan">Tarama</span>
+          <span class="badge" id="nav-threat-badge" hidden>0</span>
+        </button>
+        <button class="nav-item" data-page="quarantine">
+          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/></svg>
+          <span data-i18n="nav.quarantine">Karantina</span>
+          <span class="badge neutral" id="nav-quarantine-badge" hidden>0</span>
+        </button>
+        <button class="nav-item" data-page="firewall">
+          <svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.2 8.3-8 9.5C7.2 20.3 4 16.5 4 12V6l8-3z"/><path d="M4 12h16M12 6v13"/></svg>
+          <span data-i18n="nav.firewall">Firewall</span>
+        </button>
+        <button class="nav-item" data-page="activity">
+          <svg viewBox="0 0 24 24"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>
+          <span data-i18n="nav.activity">Etkinlik</span>
+        </button>
+        <button class="nav-item" data-page="settings">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.6 1.7 1.7 0 00-1.9.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.6-1 1.7 1.7 0 00-.3-1.9l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.9.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>
+          <span data-i18n="nav.settings">Ayarlar</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="protection-chip">
+          <span class="dot"></span>
+          <div>
+            <strong id="sidebar-status" data-i18n="sidebar.status">Koruma Aktif</strong>
+            <small id="sidebar-sub" data-i18n="sidebar.sub">İmza DB v2026.10</small>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ============ MAIN ============ -->
+    <main class="main">
+      <header class="topbar">
+        <div class="traffic-spacer"></div>
+        <h1 id="page-title" data-i18n="page.dashboard">Genel Bakış</h1>
+        <div class="topbar-actions">
+          <div class="pill ok" id="top-status-pill">
+            <span class="dot"></span> <span data-i18n="top.status">Kalkan devrede</span>
+          </div>
+          <button class="btn primary sm" id="top-quick-scan" data-i18n="top.quickScan">Hızlı Tarama</button>
+        </div>
+      </header>
+
+      <div class="content">
+
+        <!-- ===== DASHBOARD ===== -->
+        <section class="page active" id="page-dashboard">
+          <div class="hero-card">
+            <div class="hero-left">
+              <div class="shield-orb">
+                <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.6">
+                  <path d="M12 2l8 3.5v5.6c0 5-3.4 9.4-8 10.9-4.6-1.5-8-5.9-8-10.9V5.5L12 2z"/>
+                  <path d="M9 12l2.2 2.2L15.5 10" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <div>
+                <h2 data-i18n="hero.title">Sisteminiz korunuyor</h2>
+                <p id="hero-sub" data-i18n="hero.sub">Gerçek zamanlı kalkan: native daemon bekleniyor · Tarama ve firewall aktif</p>
+              </div>
+            </div>
+            <div class="hero-right">
+              <div class="score-ring" id="score-ring">
+                <svg viewBox="0 0 120 120">
+                  <circle cx="60" cy="60" r="52" class="ring-bg"/>
+                  <circle cx="60" cy="60" r="52" class="ring-fg" id="ring-fg"/>
+                </svg>
+                <div class="ring-label"><strong id="score-value">86</strong><span data-i18n="score.label">güvenlik puanı</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="stat-grid">
+            <div class="stat-card">
+              <div class="stat-ico cyan">
+                <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+              </div>
+              <div class="stat-body"><strong id="stat-scanned">0</strong><span data-i18n="stat.scanned">Taranan dosya</span></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-ico red">
+                <svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/></svg>
+              </div>
+              <div class="stat-body"><strong id="stat-threats">0</strong><span data-i18n="stat.threats">Bulunan tehdit</span></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-ico green">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>
+              </div>
+              <div class="stat-body"><strong id="stat-quarantine">0</strong><span data-i18n="stat.quarantine">Karantinada</span></div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-ico amber">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+              </div>
+              <div class="stat-body"><strong id="stat-lastscan">—</strong><span data-i18n="stat.lastScan">Son tarama</span></div>
+            </div>
+          </div>
+
+          <div class="two-col">
+            <div class="panel">
+              <div class="panel-head">
+                <h3 data-i18n="modules.title">Koruma modülleri</h3>
+              </div>
+              <div class="module-list">
+                <div class="module">
+                  <div class="module-ico ok"><svg viewBox="0 0 24 24"><path d="M12 2l8 3.5v5.6c0 5-3.4 9.4-8 10.9-4.6-1.5-8-5.9-8-10.9V5.5L12 2z"/></svg></div>
+                  <div class="module-info"><strong data-i18n="module.scanEngine">Tarama motoru</strong><span data-i18n="module.scanEngine.sub">SHA-256 imza + EICAR + sezgisel analiz</span></div>
+                  <span class="status-tag ok" data-i18n="status.active">Aktif</span>
+                </div>
+                <div class="module">
+                  <div class="module-ico ok"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.2 8.3-8 9.5C7.2 20.3 4 16.5 4 12V6l8-3z"/></svg></div>
+                  <div class="module-info"><strong data-i18n="module.firewall">Firewall</strong><span data-i18n="module.firewall.sub">Kural motoru + bağlantı izleme</span></div>
+                  <span class="status-tag ok" id="module-fw-status" data-i18n="status.active">Aktif</span>
+                </div>
+                <div class="module">
+                  <div class="module-ico ok"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg></div>
+                  <div class="module-info"><strong data-i18n="module.honeypot">Fidye izleyici</strong><span data-i18n="module.honeypot.sub">Yem dosyaları + toplu değişiklik alarmı</span></div>
+                  <span class="status-tag ok" id="module-honeypot-status" data-i18n="status.watch">İzliyor</span>
+                </div>
+                <div class="module">
+                  <div class="module-ico warn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg></div>
+                  <div class="module-info"><strong data-i18n="module.realtime">Gerçek zamanlı kalkan</strong><span data-i18n="module.realtime.sub">Endpoint Security native daemon gerektirir</span></div>
+                  <span class="status-tag warn" data-i18n="status.standby">Beklemede</span>
+                </div>
+                <div class="module">
+                  <div class="module-ico ok"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg></div>
+                  <div class="module-info"><strong data-i18n="module.quarantine">Karantina</strong><span data-i18n="module.quarantine.sub">Tehditli dosyaları izole eder (AES-256 şifreli)</span></div>
+                  <span class="status-tag ok" data-i18n="status.active">Aktif</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-head">
+                <h3 data-i18n="feed.recent">Son etkinlik</h3>
+                <button class="btn ghost sm" data-goto="activity" data-i18n="feed.all">Tümü</button>
+              </div>
+              <div class="feed" id="dash-feed">
+                <div class="feed-empty" data-i18n="feed.empty">Henüz etkinlik yok</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== SCAN ===== -->
+        <section class="page" id="page-scan">
+          <div class="panel scan-panel">
+            <div class="scan-controls">
+              <div class="scan-modes">
+                <button class="mode-card active" data-mode="quick">
+                  <strong data-i18n="scan.quick">Hızlı Tarama</strong>
+                  <span data-i18n="scan.quick.sub">İndirilenler, Masaüstü, Belgeler, Uygulamalar</span>
+                </button>
+                <button class="mode-card" data-mode="custom">
+                  <strong data-i18n="scan.custom">Özel Tarama</strong>
+                  <span data-i18n="scan.custom.sub">Kendi klasörlerinizi seçin</span>
+                </button>
+              </div>
+              <div class="scan-actions">
+                <button class="btn primary" id="btn-start-scan" data-i18n="scan.start">Taramayı Başlat</button>
+                <button class="btn danger" id="btn-stop-scan" hidden data-i18n="scan.stop">Durdur</button>
+              </div>
+            </div>
+
+            <div class="scan-progress" id="scan-progress" hidden>
+              <div class="progress-meta">
+                <span id="progress-count">0</span>
+                <span id="progress-elapsed">0.0s</span>
+              </div>
+              <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+              <div class="progress-file" id="progress-file">—</div>
+            </div>
+
+            <div class="scan-result-summary" id="scan-summary" hidden></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h3 data-i18n="scan.results">Tarama sonuçları</h3>
+              <button class="btn ghost sm" id="btn-eicar-test" data-i18n="scan.eicar">EICAR test dosyası oluştur</button>
+            </div>
+            <div class="table-wrap">
+              <table class="table" id="results-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="scan.col.file">Dosya</th>
+                    <th data-i18n="scan.col.threat">Tehdit</th>
+                    <th data-i18n="scan.col.result">Sonuç</th>
+                  </tr>
+                </thead>
+                <tbody id="results-body">
+                  <tr class="empty-row"><td colspan="3" data-i18n="scan.empty">Henüz tarama yapılmadı</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel history-panel">
+            <div class="panel-head">
+              <h3 data-i18n="history.title">Tarama geçmişi</h3>
+              <div class="history-actions">
+                <span class="muted history-status" id="history-status" hidden></span>
+                <button class="btn ghost sm" id="btn-hist-json" data-i18n="history.exportJson">JSON</button>
+                <button class="btn ghost sm" id="btn-hist-csv" data-i18n="history.exportCsv">CSV</button>
+                <button class="btn ghost danger sm" id="btn-hist-clear" data-i18n="history.clear">Geçmişi temizle</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="table" id="history-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="history.col.date">Tarih</th>
+                    <th data-i18n="history.col.mode">Mod</th>
+                    <th data-i18n="history.col.files">Dosya</th>
+                    <th data-i18n="history.col.threats">Tehdit</th>
+                    <th data-i18n="history.col.duration">Süre</th>
+                  </tr>
+                </thead>
+                <tbody id="history-body">
+                  <tr class="empty-row"><td colspan="5" data-i18n="history.empty">Henüz tarama yok</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== QUARANTINE ===== -->
+        <section class="page" id="page-quarantine">
+          <div class="panel">
+            <div class="panel-head">
+              <h3 data-i18n="q.title">Karantinadaki dosyalar</h3>
+              <div class="head-right">
+                <span class="status-tag ok" id="q-integrity-tag" data-i18n="q.integrityOk">Bütünlük doğrulandı</span>
+                <span class="muted" id="quarantine-count">0</span>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th data-i18n="q.col.threat">Tehdit</th>
+                    <th data-i18n="q.col.location">Orijinal konum</th>
+                    <th data-i18n="q.col.date">Tarih</th>
+                    <th data-i18n="q.col.action">İşlem</th>
+                  </tr>
+                </thead>
+                <tbody id="quarantine-body">
+                  <tr class="empty-row"><td colspan="4" data-i18n="q.empty">Karantina boş</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== FIREWALL ===== -->
+        <section class="page" id="page-firewall">
+          <div class="firewall-banner">
+            <div>
+              <h3><span data-i18n="fw.title">Firewall</span> <span class="status-tag ok" id="fw-banner-status" data-i18n="status.active">Aktif</span></h3>
+              <p class="muted" data-i18n="fw.sub">Kural motoru aktif bağlantıları değerlendirir. Paket engelleme için native Network Extension gerekir (native-daemon/).</p>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="fw-toggle" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="two-col">
+            <div class="panel">
+              <div class="panel-head">
+                <h3 data-i18n="fw.rules">Güvenlik kuralları</h3>
+                <button class="btn primary sm" id="btn-add-rule" data-i18n="fw.addRule">+ Kural ekle</button>
+              </div>
+              <div class="table-wrap">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th data-i18n="fw.col.type">Tür</th>
+                      <th data-i18n="fw.col.target">Hedef</th>
+                      <th data-i18n="fw.col.port">Port</th>
+                      <th data-i18n="fw.col.note">Not</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="rules-body"></tbody>
+                </table>
+              </div>
+
+              <form class="rule-form" id="rule-form" hidden>
+                <select id="rule-type">
+                  <option value="block" data-i18n="fw.block">ENGELLE</option>
+                  <option value="allow" data-i18n="fw.allow">İZİN</option>
+                </select>
+                <input id="rule-host" data-i18n-placeholder="fw.hostPlaceholder" placeholder="Alan adı, IP veya uygulama" required />
+                <input id="rule-port" data-i18n-placeholder="fw.portPlaceholder" placeholder="Port (ops.)" inputmode="numeric" />
+                <input id="rule-note" data-i18n-placeholder="fw.notePlaceholder" placeholder="Not" />
+                <button type="submit" class="btn primary sm" data-i18n="fw.save">Kaydet</button>
+                <button type="button" class="btn ghost sm" id="btn-cancel-rule" data-i18n="fw.cancel">İptal</button>
+              </form>
+            </div>
+
+            <div class="panel">
+              <div class="panel-head">
+                <h3 data-i18n="fw.connections">Aktif bağlantılar</h3>
+                <button class="btn ghost sm" id="btn-refresh-conns" data-i18n="fw.refresh">Yenile</button>
+              </div>
+              <div class="table-wrap slim">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th data-i18n="fw.col.process">Süreç</th>
+                      <th data-i18n="fw.col.remote">Uzak adres</th>
+                      <th data-i18n="fw.col.port">Port</th>
+                      <th data-i18n="fw.col.verdict">Karar</th>
+                    </tr>
+                  </thead>
+                  <tbody id="conns-body">
+                    <tr class="empty-row"><td colspan="4">…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== ACTIVITY ===== -->
+        <section class="page" id="page-activity">
+          <div class="panel">
+            <div class="panel-head">
+              <h3 data-i18n="log.title">Etkinlik kaydı</h3>
+              <button class="btn ghost sm" id="btn-refresh-events" data-i18n="log.refresh">Yenile</button>
+            </div>
+            <div class="feed" id="activity-feed">
+              <div class="feed-empty" data-i18n="feed.empty">Henüz etkinlik yok</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== SETTINGS ===== -->
+        <section class="page" id="page-settings">
+          <div class="two-col">
+            <div class="panel">
+              <div class="panel-head"><h3 data-i18n="set.title">Koruma tercihleri</h3></div>
+              <div class="setting-list">
+                <label class="setting">
+                  <div><strong data-i18n="set.autoQuarantine">Otomatik karantina</strong><span data-i18n="set.autoQuarantine.sub">Tespit edilen tehditleri otomatik izole et</span></div>
+                  <span class="switch"><input type="checkbox" id="set-auto-quarantine" checked><span class="slider"></span></span>
+                </label>
+                <label class="setting">
+                  <div><strong data-i18n="set.heuristics">Sezgisel analiz</strong><span data-i18n="set.heuristics.sub">İmza dışında davranışsal şüpheleri araştır</span></div>
+                  <span class="switch"><input type="checkbox" id="set-heuristics" checked><span class="slider"></span></span>
+                </label>
+                <label class="setting">
+                  <div><strong data-i18n="set.archives">Arşiv taraması</strong><span data-i18n="set.archives.sub">zip/tar/gz içeriğini de tara</span></div>
+                  <span class="switch"><input type="checkbox" id="set-archives" checked><span class="slider"></span></span>
+                </label>
+                <label class="setting">
+                  <div><strong data-i18n="set.notifications">Bildirimler</strong><span data-i18n="set.notifications.sub">Tehdit bulunduğunda sistem bildirimi göster</span></div>
+                  <span class="switch"><input type="checkbox" id="set-notifications" checked><span class="slider"></span></span>
+                </label>
+                <label class="setting">
+                  <div><strong data-i18n="set.firewall">Firewall</strong><span data-i18n="set.firewall.sub">Kural motorunu etkinleştir</span></div>
+                  <span class="switch"><input type="checkbox" id="set-firewall" checked><span class="slider"></span></span>
+                </label>
+                <label class="setting">
+                  <div><strong data-i18n="set.honeypot">Fidye izleyici</strong><span data-i18n="set.honeypot.sub">Belgeler/Masaüstü'ne yem dosyaları + alarm</span></div>
+                  <span class="switch"><input type="checkbox" id="set-honeypot" checked><span class="slider"></span></span>
+                </label>
+                <label class="setting">
+                  <div><strong data-i18n="set.scheduled">Zamanlanmış tarama</strong><span data-i18n="set.scheduled.sub">Uygulama açıkken periyodik otomatik tarama</span></div>
+                  <span class="switch"><input type="checkbox" id="set-scheduled"><span class="slider"></span></span>
+                </label>
+                <label class="setting">
+                  <div><strong data-i18n="set.interval">Aralık (saat)</strong></div>
+                  <input class="num-input" id="set-interval" type="number" min="1" max="168" value="24" />
+                </label>
+                <label class="setting">
+                  <div><strong data-i18n="set.realtime">Gerçek zamanlı kalkan</strong><span data-i18n="set.realtime.sub">Native daemon (Endpoint Security) gerektirir</span></div>
+                  <span class="switch"><input type="checkbox" id="set-realtime" disabled><span class="slider"></span></span>
+                </label>
+              </div>
+
+              <div class="sub-block">
+                <div class="setting-inline">
+                  <div><strong data-i18n="set.language">Dil</strong></div>
+                  <select id="set-language" class="num-input">
+                    <option value="tr">Türkçe</option>
+                    <option value="en">English</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="sub-block">
+                <div class="setting-inline">
+                  <div>
+                    <strong data-i18n="set.dbUpdate">İmza veritabanı</strong>
+                    <span class="muted" id="db-update-status">v2026.10.1</span>
+                  </div>
+                  <button class="btn ghost sm" id="btn-db-update" data-i18n="set.dbUpdate.check">Güncelleme denetle</button>
+                </div>
+                <input class="text-input" id="set-db-url" placeholder="https://…/db.json" />
+              </div>
+
+              <div class="sub-block">
+                <div class="setting-inline">
+                  <div>
+                    <strong data-i18n="set.integrity">Karantina bütünlüğü</strong>
+                    <span class="muted" id="integrity-status">—</span>
+                  </div>
+                  <button class="btn ghost sm" id="btn-integrity" data-i18n="set.integrity.check">Şimdi denetle</button>
+                </div>
+              </div>
+
+              <div class="sub-block">
+                <div class="setting-inline">
+                  <div>
+                    <strong data-i18n="set.exclusions">Dışlamalar</strong>
+                    <span class="muted" data-i18n="set.exclusions.sub">Taramalarda tamamen atlanacak klasör ve dosyalar</span>
+                  </div>
+                  <button class="btn ghost sm" id="btn-add-exclusion" data-i18n="set.exclusions.add">+ Klasör ekle</button>
+                </div>
+                <div class="exclusions-list" id="exclusions-list"></div>
+              </div>
+
+              <div class="sub-block">
+                <div class="setting-inline">
+                  <div>
+                    <strong data-i18n="set.tcc">Tam Disk Erişimi</strong>
+                    <span class="muted" data-i18n="set.tcc.sub">Tüm klasörleri taramak için Aegis'e Tam Disk Erişimi verin (Sistem Ayarları → Gizlilik ve Güvenlik).</span>
+                  </div>
+                  <button class="btn ghost sm" id="btn-tcc" data-i18n="set.tcc.open">Sistem Ayarları'nı aç</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-head"><h3 data-i18n="set.about">Hakkında</h3></div>
+              <div class="about">
+                <div class="about-logo">
+                  <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.6">
+                    <path d="M12 2l8 3.5v5.6c0 5-3.4 9.4-8 10.9-4.6-1.5-8-5.9-8-10.9V5.5L12 2z"/>
+                    <path d="M9 12l2.2 2.2L15.5 10" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
+                <h4>Aegis Security Suite</h4>
+                <p class="muted" data-i18n="set.version">Sürüm 0.1.0 · İmza DB v2026.10</p>
+                <p class="muted" id="set-about-sub" data-i18n="set.about.sub">Talep üzerine tarama, şifreli karantina, kural tabanlı firewall</p>
+                <h5 class="about-h" data-i18n="set.roadmap">Yol haritası</h5>
+                <ul class="about-list">
+                  <li class="ok-item" data-i18n="set.onDemandScanning">Talep üzerine tarama: aktif</li>
+                  <li class="ok-item" data-i18n="set.encryptedQuarantine">Şifreli karantina (AES-256-GCM): aktif</li>
+                  <li class="ok-item" data-i18n="set.ruleFirewall">Kural tabanlı firewall: aktif</li>
+                  <li class="pending-item" data-i18n="set.realtimePending">Gerçek zamanlı kalkan: Apple onayı bekliyor (native-daemon/)</li>
+                  <li class="pending-item" data-i18n="set.packetBlockPending">Paket engelleme: Apple onayı bekliyor (native-daemon/)</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+  <script src="i18n.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

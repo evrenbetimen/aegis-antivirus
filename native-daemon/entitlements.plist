@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Aegis native system extensions — entitlements.
+
+	  One file for both targets on purpose: each target only uses the keys it
+	  needs, and codesign silently ignores keys the process never exercises.
+	  In Xcode you can split this into AegisShield.entitlements and
+	  AegisFirewall.entitlements (CODE_SIGN_ENTITLEMENTS) — the key sets below
+	  are commented per target.
+
+	  Signing notes (see native-daemon/README.md):
+	    * com.apple.developer.endpoint-security.client  -> AegisShield, Apple
+	      approval required, the extension also needs Full Disk Access (TCC).
+	    * com.apple.developer.networking.networkextension -> AegisFirewall.
+	      The `-systemextension` value is the one required for Developer ID
+	      (outside the Mac App Store) builds; the plain value covers App Store
+	      builds.  Outside the App Store this entitlement must be enabled for
+	      the App ID in the developer portal and a provisioning profile must be
+	      installed (Apple documentation: "Network Extensions Entitlement").
+	    * com.apple.developer.networkextension.network-filter is requested by
+	      this project for completeness.  It is NOT part of Apple's documented
+	      entitlement list (Apple uses
+	      com.apple.developer.networking.networkextension); codesign accepts it
+	      and the system ignores unknown keys, but remove it if your signing
+	      pipeline validates entitlements against Apple's list.
+	-->
+
+	<!-- AegisShield -->
+	<key>com.apple.developer.endpoint-security.client</key>
+	<true/>
+
+	<!-- AegisFirewall (content filter) -->
+	<key>com.apple.developer.networking.networkextension</key>
+	<array>
+		<string>content-filter-provider-systemextension</string>
+		<string>content-filter-provider</string>
+	</array>
+	<key>com.apple.developer.networkextension.network-filter</key>
+	<true/>
+</dict>
+</plist>

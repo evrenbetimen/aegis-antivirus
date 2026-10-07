@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Kod imzalama + notarization için gerekli -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <!-- Network Extension (firewall) — Apple yetkisi gerektirir -->
+  <key>com.apple.developer.networkextension.network-filter</key>
+  <true/>
+  <!-- Endpoint Security (gerçek zamanlı kalkan) — Apple onayı gerektirir -->
+  <key>com.apple.developer.endpoint-security.client</key>
+  <true/>
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+</dict>
+</plist>

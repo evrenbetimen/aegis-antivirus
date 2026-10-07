@@ -1,0 +1,38 @@
+{
+  "name": "aegis-antivirus",
+  "version": "0.1.0",
+  "description": "Aegis - macOS icin gelismis guvenlik paketi (tarama, karantina, firewall)",
+  "main": "main.js",
+  "scripts": {
+    "start": "env -u NODE_OPTIONS electron .",
+    "test": "env -u NODE_OPTIONS electron test/e2e-scan.js",
+    "test:unit": "node --test test/signatures.test.js test/archive.test.js test/cache.test.js",
+    "icon": "env -u NODE_OPTIONS electron scripts/make-icon.js",
+    "bench": "env -u NODE_OPTIONS electron test/bench-scan.js",
+    "dist": "electron-builder --mac"
+  },
+  "author": "Aegis Security",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^44.5.1",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.aegis.antivirus",
+    "mac": {
+      "category": "public.app-category.security",
+      "target": "dmg",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "renderer/**/*",
+      "signatures/**/*",
+      "build/icon.*"
+    ]
+  }
+}

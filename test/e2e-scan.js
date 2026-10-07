@@ -286,6 +286,51 @@ app.whenReady().then(async () => {
     check('Dışlama uygulandı', false, String(err.message || err));
   }
 
+  // Dışlama yalnızca dizinin kendisini kapsar ("dislama" → "dislama2" taranır)
+  try {
+    const exDir = path.join(tmp, 'dislama-kok');
+    const sibDir = path.join(tmp, 'dislama-kok2');
+    fs.mkdirSync(exDir, { recursive: true });
+    fs.mkdirSync(sibDir, { recursive: true });
+    const sibFile = path.join(sibDir, 'kardes.bin');
+    fs.writeFileSync(sibFile, 'kardes dizin icerigi');
+    const sibHash = crypto.createHash('sha256').update(fs.readFileSync(sibFile)).digest('hex');
+    scanner.SIGNATURES.set(sibHash, 'Test.Sibling-Match');
+    const rSib = await scanner.run(
+      { paths: [tmp], exclusions: [exDir], heuristics: false, autoQuarantine: false, signaturesDir: SIGNATURES_DIR, maxWorkers: 0 },
+      () => {}
+    );
+    check(
+      'Dışlama kardeş dizini kapsamadı',
+      rSib.threats.some((t) => t.path === sibFile),
+      rSib.threats.map((t) => t.path.split('/').pop()).join(',') || 'tehdit yok'
+    );
+    fs.rmSync(exDir, { recursive: true, force: true });
+    fs.rmSync(sibDir, { recursive: true, force: true });
+  } catch (err) {
+    check('Dışlama kardeş dizini kapsamadı', false, String(err.message || err));
+  }
+
+  // Yolunda "!" geçen gerçek dosya da karantinaya alınır (arşiv girdisi sanılmaz)
+  try {
+    const bangDir = path.join(tmp, 'unlem');
+    fs.mkdirSync(bangDir, { recursive: true });
+    const bangFile = path.join(bangDir, 'indir!.bin');
+    fs.writeFileSync(bangFile, 'unlemli dosya icerigi');
+    const bangHash = crypto.createHash('sha256').update(fs.readFileSync(bangFile)).digest('hex');
+    scanner.SIGNATURES.set(bangHash, 'Test.Bang-Match');
+    const rBang = await scanner.run(
+      { paths: [bangDir], heuristics: false, autoQuarantine: true, signaturesDir: SIGNATURES_DIR },
+      () => {}
+    );
+    const th = rBang.threats.find((t) => t.path === bangFile);
+    check('"!" içeren yol karantinaya alındı', !!(th && th.quarantined) && !fs.existsSync(bangFile), th ? `q=${th.quarantined}` : 'tehdit yok');
+    if (th && th.quarantineId) quarantine.remove(th.quarantineId);
+    fs.rmSync(bangDir, { recursive: true, force: true });
+  } catch (err) {
+    check('"!" içeren yol karantinaya alındı', false, String(err.message || err));
+  }
+
   // Paralel tarama (worker havuzu) — 8'den fazla dosya havuzu zorlar
   try {
     const pdir = path.join(tmp, 'paralel');

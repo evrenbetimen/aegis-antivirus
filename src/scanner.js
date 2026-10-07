@@ -55,7 +55,7 @@ function listFiles(dir, exclusions, out, depth, ctx) {
   }
   for (const e of entries) {
     const full = path.join(dir, e.name);
-    if (exclusions.some((x) => full.startsWith(x))) continue;
+    if (isExcluded(full, exclusions)) continue;
     if (e.isDirectory()) {
       if (e.name === 'quarantine' || e.name === 'node_modules' || e.name.startsWith('.')) continue;
       listFiles(full, exclusions, out, depth + 1, ctx);
@@ -63,6 +63,15 @@ function listFiles(dir, exclusions, out, depth, ctx) {
       out.push(full);
     }
   }
+}
+
+/** Dışlama yolun kendisi ya da üst dizini mi? ("/a/proje" → "/a/proje2" dışlanmaz) */
+function isExcluded(full, exclusions) {
+  return exclusions.some((x) => {
+    const base = String(x || '').replace(/[\\/]+$/, '');
+    if (!base) return false;
+    return full === base || full.startsWith(base + path.sep);
+  });
 }
 
 function heuristicCheck(file, size) {
@@ -249,7 +258,15 @@ async function run(opts, onProgress) {
   if (scanning) throw new Error('Tarama zaten çalışıyor');
   scanning = true;
   stopFlag = false;
+  try {
+    return await runScan(opts, onProgress);
+  } finally {
+    destroyPool();
+    scanning = false;
+  }
+}
 
+async function runScan(opts, onProgress) {
   const files = [];
   const exclusions = (opts.exclusions || []).slice();
   const ctx = { denied: [] }; // EPERM/EACCES ile erişilemeyen dizinler
@@ -413,7 +430,6 @@ async function run(opts, onProgress) {
 
   report.stopped = stopFlag && nextIndex < files.length;
   report.duration = Date.now() - startTime;
-  scanning = false;
   return report;
 }
 
@@ -500,7 +516,7 @@ async function scanArchiveFile(file, db, opts, report, emit) {
   if (!hit || stopFlag) return null;
   return await handleThreat(
     `${file}!${hit.entry}`,
-    { kind: 'signature', threat: hit.name, detail: `Arşiv içi eşleşme (${hit.kind})`, hash: null },
+    { kind: 'signature', threat: hit.name, detail: `Arşiv içi eşleşme (${hit.kind})`, hash: null, inArchive: true },
     opts
   );
 }
@@ -517,7 +533,9 @@ async function handleThreat(file, meta, opts) {
   // Politika: yalnızca kesin imza/EICAR tespitleri otomatik karantinaya alınır.
   // Sezgisel bulgular yalnızca işaretlenir (kullanıcı onayı gerekir).
   const auto = opts.autoQuarantine && meta.kind !== 'heuristic';
-  if (auto && !String(file).includes('!')) {
+  // Arşiv içi bulgu ("arsiv.zip!girdi") diskte ayrı dosya değildir; yolunda
+  // "!" geçen gerçek dosyalar (ör. "indir!.exe") yine karantinaya alınır.
+  if (auto && !meta.inArchive) {
     const rec = await moveToQuarantine(file, meta);
     entry.quarantined = !rec.error;
     entry.quarantineId = rec.id;

@@ -116,6 +116,13 @@ function getKey() {
   return keyCache;
 }
 
+// Kayıt kimliği store() biçiminde olmalı (ör. "muyqydc1-d3dad46c"); renderer'dan
+// gelen "../" gibi değerler karantina dizini dışına erişemez.
+const ID_RE = /^[a-z0-9]{1,16}-[0-9a-f]{8}$/;
+function isValidId(id) {
+  return typeof id === 'string' && ID_RE.test(id);
+}
+
 function metaPath(id) {
   return path.join(QUARANTINE_DIR, id + '.json');
 }
@@ -254,6 +261,11 @@ async function store(file, meta) {
   }
 }
 
+function isInsideQuarantine(p) {
+  const rel = path.relative(QUARANTINE_DIR, path.resolve(String(p)));
+  return !!rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
 function readMeta(id) {
   try {
     return JSON.parse(fs.readFileSync(metaPath(id), 'utf8'));
@@ -297,6 +309,7 @@ function list() {
 }
 
 async function restore(id) {
+  if (!isValidId(id)) return { ok: false, error: 'Geçersiz kayıt kimliği' };
   const meta = readMeta(id);
   if (!meta) return { ok: false, error: 'Kayıt bulunamadı' };
 
@@ -321,7 +334,7 @@ async function restore(id) {
       try {
         if (meta.file) fs.unlinkSync(meta.file);
       } catch {}
-    } else if (meta.file && fs.existsSync(meta.file)) {
+    } else if (meta.file && isInsideQuarantine(meta.file) && fs.existsSync(meta.file)) {
       // Eski sürüm: düz dosya
       await fs.promises.copyFile(meta.file, dest);
       fs.unlinkSync(meta.file);
@@ -339,9 +352,10 @@ async function restore(id) {
 }
 
 function remove(id) {
+  if (!isValidId(id)) return { ok: false, error: 'Geçersiz kayıt kimliği' };
   const meta = readMeta(id);
   try {
-    if (meta && meta.file && fs.existsSync(meta.file)) fs.unlinkSync(meta.file);
+    if (meta && meta.file && isInsideQuarantine(meta.file) && fs.existsSync(meta.file)) fs.unlinkSync(meta.file);
     fs.unlinkSync(metaPath(id));
     return { ok: true };
   } catch (err) {
@@ -399,4 +413,4 @@ function cleanupOrphans() {
   return removed;
 }
 
-module.exports = { store, list, restore, remove, verifyAll, setKey, initSecureKey, cleanupOrphans, QUARANTINE_DIR };
+module.exports = { isValidId, store, list, restore, remove, verifyAll, setKey, initSecureKey, cleanupOrphans, QUARANTINE_DIR };

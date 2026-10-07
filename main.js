@@ -12,7 +12,12 @@ const dbupdate = require('./src/dbupdate');
 const { Honeypot } = require('./src/honeypot');
 const { Scheduler } = require('./src/scheduler');
 
-const SIGNATURES_DIR = path.join(__dirname, 'signatures');
+// Paketle gelen imzalar app.asar içinde (salt okunur); tarama ve güncellemeler
+// kullanıcı dizinindeki kopyayı kullanır (bkz. dbupdate.prepareSignaturesDir).
+const BUNDLED_SIGNATURES_DIR = path.join(__dirname, 'signatures');
+const SIGNATURES_DIR = path.join(app.getPath('userData'), 'signatures');
+// Yayıncı açık anahtarı YALNIZCA paketten okunur — güncellemeyle değiştirilemez
+const DB_PUBLIC_KEY = dbupdate.loadPublicKey(BUNDLED_SIGNATURES_DIR);
 const CACHE_FILE = path.join(app.getPath('userData'), 'hash-cache.json');
 
 let win = null;
@@ -327,7 +332,7 @@ ipcMain.handle('db:info', async () => {
 ipcMain.handle('db:update', async () => {
   const settings = store.getSettings();
   if (!settings.dbUrl) return { ok: false, reason: 'Güncelleme adresi ayarlanmamış (Ayarlar → İmza veritabanı)' };
-  const res = await dbupdate.update({ url: settings.dbUrl, dir: SIGNATURES_DIR });
+  const res = await dbupdate.update({ url: settings.dbUrl, dir: SIGNATURES_DIR, publicKey: DB_PUBLIC_KEY });
   if (res.ok && res.changed) {
     addEvent({
       type: 'info',
@@ -339,7 +344,7 @@ ipcMain.handle('db:update', async () => {
   return res;
 });
 
-ipcMain.handle('db:verify', () => dbupdate.verifyLocal(SIGNATURES_DIR));
+ipcMain.handle('db:verify', () => dbupdate.verifyLocal(SIGNATURES_DIR, DB_PUBLIC_KEY, BUNDLED_SIGNATURES_DIR));
 
 /* ---------------- IPC: Ayarlar / durum / kabuk ---------------- */
 
@@ -369,6 +374,11 @@ ipcMain.handle('shell:openExternal', (_e, url) => {
 /* ---------------- Uygulama yaşam döngüsü ---------------- */
 
 app.whenReady().then(() => {
+  try {
+    dbupdate.prepareSignaturesDir(BUNDLED_SIGNATURES_DIR, SIGNATURES_DIR);
+  } catch (err) {
+    console.error('[signatures] kullanıcı imza dizini hazırlanamadı:', err);
+  }
   // Karantina anahtarı → Keychain (safeStorage); kullanılamazsa dosya anahtarı
   quarantine.initSecureKey(safeStorage);
   // Eski restore() sürümünden kalan orfan .qtn artıklarını temizle

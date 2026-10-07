@@ -492,6 +492,24 @@ app.whenReady().then(async () => {
     check('Orfan karantina artığı temizlendi', false, String(err.message || err));
   }
 
+  // ---------- Karantina kimliği doğrulaması (dizin dışına erişim yok) ----------
+  try {
+    const victim = path.join(tmp, 'kurban.txt');
+    fs.writeFileSync(victim, 'silinmemeli');
+    const fakeMeta = path.join(tmp, 'sahte.json');
+    fs.writeFileSync(fakeMeta, JSON.stringify({ id: 'x', file: victim, originalPath: victim }));
+    const rel = path.relative(quarantine.QUARANTINE_DIR, fakeMeta).replace(/\.json$/, '');
+    const rDel = quarantine.remove(rel);
+    const rRes = await quarantine.restore(rel);
+    check(
+      'Geçersiz karantina kimliği reddedildi',
+      !rDel.ok && !rRes.ok && fs.existsSync(victim) && fs.existsSync(fakeMeta),
+      `${rDel.error} | ${rRes.error}`
+    );
+  } catch (err) {
+    check('Geçersiz karantina kimliği reddedildi', false, String(err.message || err));
+  }
+
   // ---------- Keychain enjeksiyonu (safeStorage yolu emülasyonu) ----------
   try {
     const keyFile = path.join(quarantine.QUARANTINE_DIR, '.key');

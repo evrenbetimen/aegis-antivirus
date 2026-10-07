@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Birim testleri (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS: sistem tar'ı bsdtar — arşiv girdisi kaçırma kuralları orada doğrulanır
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Sözdizimi denetimi
+        run: for f in main.js preload.js src/*.js renderer/*.js scripts/*.js test/*.js; do node --check "$f"; done
+      - run: npm run test:unit
+
+  e2e:
+    name: Uçtan uca test (Electron)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: e2e (Xvfb)
+        run: env -u NODE_OPTIONS xvfb-run -a ./node_modules/.bin/electron --no-sandbox test/e2e-scan.js
+
+  audit:
+    name: Bağımlılık güvenlik denetimi
+    runs-on: ubuntu-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm audit --audit-level=high

@@ -222,3 +222,29 @@ test('özel girdi adları ("-x", "[x]", "*") atlanmadan okunur', async () => {
   }
   fs.rmSync(d, { recursive: true, force: true });
 });
+
+test('tar: boyutu bilinmeyen girdilerde toplam bayt bütçesi okunan baytla uygulanır', async () => {
+  const d = tmpdir();
+  const names = [];
+  for (let i = 0; i < 5; i++) {
+    const n = `b${i}.bin`;
+    fs.writeFileSync(path.join(d, n), Buffer.alloc(64 * 1024, 65 + i));
+    names.push(n);
+  }
+  const tar = path.join(d, 'butce.tar');
+  execFileSync('tar', ['-cf', tar, ...names], { cwd: d });
+
+  let calls = 0;
+  const res = await archive.scanEntries(
+    tar,
+    async (entry, getStream) => {
+      calls++;
+      return (await readEntry(getStream)).length;
+    },
+    { maxTotalBytes: 100 * 1024 }
+  );
+  assert.equal(calls, 2, `bütçe aşıldı: ${calls} girdi okundu`);
+  assert.ok(res.truncated, JSON.stringify(res));
+  assert.equal(res.totalBytes, 128 * 1024);
+  fs.rmSync(d, { recursive: true, force: true });
+});

@@ -250,6 +250,8 @@ function openEntryStream(filePath, entryName) {
 /**
  * Arşivdeki her girdi için onEntry(entry, getStream) çağırır.
  * getStream()'ü çağırmak zorunda değil (atlanan girdilerde çağırmaz).
+ * onEntry okuduğu bayt sayısını döndürebilir; boyutu bilinmeyen (tar/gz)
+ * girdilerde maxTotalBytes bütçesi bununla uygulanır.
  *
  * @returns {{scanned:number, skipped:number, totalBytes:number, truncated:boolean}}
  */
@@ -296,9 +298,10 @@ async function scanEntries(filePath, onEntry, opts = {}) {
     };
 
     try {
-      await onEntry(entry, getStream);
+      const readBytes = await onEntry(entry, getStream);
       res.scanned++;
-      const sz = entry.size || 0;
+      // tar/gz boyut bildirmez: tüketicinin okuduğu bayt sayısı bütçeye yazılır
+      const sz = entry.size || (Number.isFinite(readBytes) ? readBytes : 0);
       budget += sz;
       res.totalBytes += sz;
     } catch {

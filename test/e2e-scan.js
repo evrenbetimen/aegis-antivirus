@@ -38,7 +38,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 app.whenReady().then(async () => {
   // Karantina anahtarı → Keychain (safeStorage) — gerçek göç yolu
   const keyMode = quarantine.initSecureKey(safeStorage);
-  check("Karantina anahtarı Keychain'e taşındı", keyMode === 'keychain', `mod=${keyMode}`);
+  if (safeStorage.isEncryptionAvailable()) {
+    check("Karantina anahtarı Keychain'e taşındı", keyMode === 'keychain', `mod=${keyMode}`);
+  } else {
+    // Linux CI / anahtar zinciri olmayan ortam: dosya anahtarına düşmek beklenen davranış
+    check('Keychain yok → dosya anahtarına düşüldü', keyMode === 'file', `mod=${keyMode}`);
+  }
 
   const tmp = fs.mkdtempSync(path.join(app.getPath('temp'), 'aegis-e2e-'));
 
@@ -228,7 +233,10 @@ app.whenReady().then(async () => {
   }
 
   // İzin verilmeyen dizin raporu (TCC izni emülasyonu)
-  try {
+  // root chmod 000 dizini yine okuyabildiği için emülasyon root'ta anlamsız
+  if (process.getuid && process.getuid() === 0) {
+    skip('İzin verilmeyen dizin raporlandı', 'root olarak çalışıyor (chmod 000 etkisiz)');
+  } else try {
     const locked = path.join(tmp, 'kilitli');
     fs.mkdirSync(locked, { recursive: true });
     fs.writeFileSync(path.join(locked, 'gizli.txt'), 'gizli');

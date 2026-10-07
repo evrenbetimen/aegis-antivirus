@@ -474,12 +474,7 @@ async function scanArchiveFile(file, db, opts, report, emit) {
 
   const checkEntry = (entry, getStream) => {
     const p = (async () => {
-      if (hit || stopFlag || !entry || entry.isDir || entry.encrypted) {
-        try {
-          getStream().resume(); // tüket, borcu kapat
-        } catch {}
-        return;
-      }
+      if (hit || stopFlag || !entry || entry.isDir || entry.encrypted) return 0; // akış hiç açılmaz
       const buf = await readStreamCapped(getStream(), 4 * 1024 * 1024);
       report.archiveEntries++;
       report.bytesScanned += buf.length;
@@ -487,7 +482,7 @@ async function scanArchiveFile(file, db, opts, report, emit) {
       const b = signatures.checkBuffer(buf, db);
       if (b) {
         hit = { name: b.name, kind: b.kind, entry: entry.name };
-        return;
+        return buf.length;
       }
       if (buf.length <= 2048) {
         let txt = '';
@@ -498,6 +493,7 @@ async function scanArchiveFile(file, db, opts, report, emit) {
           hit = { name: 'EICAR-Test-File', kind: 'eicar', entry: entry.name };
         }
       }
+      return buf.length;
     })();
     pending.push(p);
     return p;

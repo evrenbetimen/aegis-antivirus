@@ -21,6 +21,7 @@ node --test test/signatures.test.js   # imza DB + mini YARA motoru
 node --test test/archive.test.js      # arşiv tarama (zip/tar/gz)
 node --test test/cache.test.js        # hash önbelleği
 node --test test/dbupdate.test.js     # imza DB güncelleme (Ed25519, yönlendirme, dizin)
+node --test test/validate.test.js     # IPC girdi doğrulaması (ayarlar, firewall kuralları)
 ```
 
 Yararlı bayraklar:

@@ -73,10 +73,10 @@ jobs:
           flags=()
           if [ "${sdk%%.*}" -lt 27 ]; then flags+=(-D AEGIS_PRE_MACOS27_SDK); fi
           echo "macOS SDK $sdk ${flags[*]}"
-          swiftc -parse-as-library -O "${flags[@]}" -framework EndpointSecurity -o "$RUNNER_TEMP/AegisShield" native-daemon/AegisShield.swift
+          swiftc -parse-as-library -O "${flags[@]}" -lEndpointSecurity -lbsm -o "$RUNNER_TEMP/AegisShield" native-daemon/AegisShield.swift
       - name: AegisFirewall (Network Extension)
         if: success() || failure()
-        run: swiftc -parse-as-library -O -framework NetworkExtension -o "$RUNNER_TEMP/AegisFirewall" native-daemon/AegisFirewall.swift
+        run: swiftc -parse-as-library -O -framework NetworkExtension -lbsm -o "$RUNNER_TEMP/AegisFirewall" native-daemon/AegisFirewall.swift
       - name: Info.plist / entitlements sözdizimi
         if: success() || failure()
         run: |

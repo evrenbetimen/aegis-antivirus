@@ -601,6 +601,19 @@ async function exportHistory(format) {
   }
 }
 
+async function exportEvents(format) {
+  const el = $('#events-export-status');
+  try {
+    const res = await window.api.eventsExport(format);
+    if (res && res.ok) el.textContent = '';
+    else if (res && res.canceled) el.textContent = t('history.export.canceled');
+    else el.textContent = t('history.export.failed', { error: (res && res.error) || '—' });
+  } catch (err) {
+    el.textContent = t('history.export.failed', { error: String((err && err.message) || err) });
+  }
+}
+$('#btn-events-json').addEventListener('click', () => exportEvents('json'));
+$('#btn-events-csv').addEventListener('click', () => exportEvents('csv'));
 $('#btn-hist-json').addEventListener('click', () => exportHistory('json'));
 $('#btn-hist-csv').addEventListener('click', () => exportHistory('csv'));
 $('#btn-hist-clear').addEventListener('click', async () => {

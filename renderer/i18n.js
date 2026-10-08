@@ -222,6 +222,8 @@ const DICT = {
     'set.tcc': 'Full Disk Access',
     'set.tcc.sub': 'For scanning all folders, grant Aegis Full Disk Access in System Settings → Privacy & Security.',
     'set.tcc.open': 'Open System Settings',
+    'log.exportJson': 'Save JSON',
+    'log.exportCsv': 'Save CSV',
     'set.appUpdate': 'App updates',
     'set.appUpdate.install': 'Restart and install',
     'set.appAuto': 'Automatic updates',

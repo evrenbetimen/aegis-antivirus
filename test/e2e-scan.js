@@ -228,6 +228,38 @@ app.whenReady().then(async () => {
     } catch (err) {
       check('Arşiv içi tarama (sıkıştırılmış içerik)', false, String(err.message || err));
     }
+
+    // İç içe arşiv: tar.gz → zip → zip → marker (üç katman)
+    try {
+      const cp = require('child_process');
+      const nestDir = fs.mkdtempSync(path.join(tmp, 'nest-'));
+      const leaf = path.join(nestDir, 'leaf.txt');
+      fs.writeFileSync(leaf, 'x'.repeat(4000) + ' AEGIS-TEST-MARKER-V1 ' + 'y'.repeat(4000));
+      cp.execFileSync('zip', ['-q', '-j', '-9', path.join(nestDir, 'l2.zip'), leaf]);
+      fs.unlinkSync(leaf);
+      cp.execFileSync('zip', ['-q', '-j', '-0', path.join(nestDir, 'l1.zip'), path.join(nestDir, 'l2.zip')]);
+      fs.unlinkSync(path.join(nestDir, 'l2.zip'));
+      const outer = path.join(tmp, 'ic-ice.tar.gz');
+      cp.execFileSync('tar', ['-czf', outer, '-C', nestDir, 'l1.zip']);
+      fs.rmSync(nestDir, { recursive: true, force: true });
+      const r3 = await scanner.run(
+        { paths: [outer], heuristics: false, autoQuarantine: true, scanArchives: true, signaturesDir: SIGNATURES_DIR },
+        () => {}
+      );
+      const t3 = r3.threats[0];
+      check(
+        'İç içe arşiv taraması (tar.gz → zip → zip)',
+        r3.threats.length === 1 && /l1\.zip!l2\.zip!leaf\.txt$/.test(t3.path) && !t3.quarantined,
+        `tehdit=${r3.threats.map((t) => t.path).join(',')}`
+      );
+      check(
+        'İç içe arşiv geçici dosyaları temizlendi',
+        !fs.readdirSync(require('os').tmpdir()).some((n) => n.startsWith('aegis-nested-')),
+        ''
+      );
+    } catch (err) {
+      check('İç içe arşiv taraması (tar.gz → zip → zip)', false, String(err.message || err));
+    }
   } else {
     skip('Arşiv içi tarama (sıkıştırılmış içerik)', 'archive modülü henüz yok');
   }

@@ -461,60 +461,111 @@ function readStreamCapped(stream, cap) {
   });
 }
 
+// İç içe arşiv sınırları: derinlik ve tüm katmanlar boyunca ortak bütçe
+const NESTED_MAX_DEPTH = 3;
+const NESTED_MAX_BYTES = 30 * 1024 * 1024; // tek iç arşiv
+const ARCHIVE_TOTAL_ENTRIES = 300;
+const ARCHIVE_TOTAL_BYTES = 200 * 1024 * 1024;
+
 /**
- * Arşiv içindeki girdileri imza/YARA/EICAR ile tarar.
- * Tek geçiş: onEntry promise döndürebilir (archive modülü beklemese bile
- * pending listesi ile yine de sonuca ulaşır).
+ * Arşiv içindeki girdileri imza/YARA/EICAR ile tarar; iç içe arşivlere
+ * (zip içinde zip, tar.gz içinde zip…) NESTED_MAX_DEPTH katmana kadar iner.
+ * İç arşivler 0700 geçici klasörde, girdi adından bağımsız bir adla açılır
+ * ve hemen silinir. Girdi/bayt bütçesi tüm katmanlar boyunca ortaktır, böylece
+ * "arşiv bombası" katman ekleyerek sınırları aşamaz.
  */
 async function scanArchiveFile(file, db, opts, report, emit) {
   if (!archive || !archive.scanEntries) return null;
-
+  const ctx = { entriesLeft: ARCHIVE_TOTAL_ENTRIES, bytesLeft: ARCHIVE_TOTAL_BYTES, tmpDir: null };
   let hit = null;
-  const pending = [];
-
-  const checkEntry = (entry, getStream) => {
-    const p = (async () => {
-      if (hit || stopFlag || !entry || entry.isDir || entry.encrypted) return 0; // akış hiç açılmaz
-      const buf = await readStreamCapped(getStream(), 4 * 1024 * 1024);
-      report.archiveEntries++;
-      report.bytesScanned += buf.length;
-      if (emit) emit(`${file}!${entry.name}`);
-      const b = signatures.checkBuffer(buf, db);
-      if (b) {
-        hit = { name: b.name, kind: b.kind, entry: entry.name };
-        return buf.length;
-      }
-      if (buf.length <= 2048) {
-        let txt = '';
-        try {
-          txt = buf.toString('utf8');
-        } catch {}
-        if (txt.includes(EICAR)) {
-          hit = { name: 'EICAR-Test-File', kind: 'eicar', entry: entry.name };
-        }
-      }
-      return buf.length;
-    })();
-    pending.push(p);
-    return p;
-  };
-
   try {
-    await archive.scanEntries(file, checkEntry, { maxEntries: 300 });
-  } catch {
-    return null;
+    hit = await scanArchiveLayer(file, file, 0, db, report, emit, ctx);
+  } finally {
+    if (ctx.tmpDir) {
+      try {
+        fs.rmSync(ctx.tmpDir, { recursive: true, force: true });
+      } catch {}
+    }
   }
-  // archive modülü promise'leri beklemese bile hepsini bekle
-  try {
-    await Promise.allSettled(pending);
-  } catch {}
-
   if (!hit || stopFlag) return null;
   return await handleThreat(
     `${file}!${hit.entry}`,
     { kind: 'signature', threat: hit.name, detail: `Arşiv içi eşleşme (${hit.kind})`, hash: null, inArchive: true },
     opts
   );
+}
+
+function checkBufferHit(buf, db) {
+  const b = signatures.checkBuffer(buf, db);
+  if (b) return { name: b.name, kind: b.kind };
+  if (buf.length <= 2048 && buf.toString('utf8').includes(EICAR)) return { name: 'EICAR-Test-File', kind: 'eicar' };
+  return null;
+}
+
+async function scanArchiveLayer(diskPath, label, depth, db, report, emit, ctx) {
+  if (ctx.entriesLeft <= 0 || ctx.bytesLeft <= 0) return null;
+  let hit = null;
+  const pending = [];
+  const nested = [];
+
+  const checkEntry = (entry, getStream) => {
+    const p = (async () => {
+      if (hit || stopFlag || !entry || entry.isDir || entry.encrypted) return 0; // akış hiç açılmaz
+      const ext = depth + 1 < NESTED_MAX_DEPTH && archive.archiveExt ? archive.archiveExt(entry.name) : null;
+      const cap = ext ? Math.min(NESTED_MAX_BYTES, ctx.bytesLeft) : 4 * 1024 * 1024;
+      const buf = await readStreamCapped(getStream(), cap);
+      report.archiveEntries++;
+      report.bytesScanned += buf.length;
+      if (emit) emit(`${label}!${entry.name}`);
+      const h = checkBufferHit(buf, db);
+      if (h) {
+        hit = Object.assign(h, { entry: entry.name });
+        return buf.length;
+      }
+      // Kesilmemiş iç arşivleri sonraki katman için sakla (sırayla taranır)
+      if (ext && buf.length > 0 && buf.length < cap) nested.push({ name: entry.name, ext, buf });
+      return buf.length;
+    })();
+    pending.push(p);
+    return p;
+  };
+
+  let res = null;
+  try {
+    res = await archive.scanEntries(diskPath, checkEntry, {
+      maxEntries: Math.max(1, ctx.entriesLeft),
+      maxTotalBytes: Math.max(1, ctx.bytesLeft)
+    });
+  } catch {
+    return null;
+  }
+  try {
+    await Promise.allSettled(pending);
+  } catch {}
+  if (res) {
+    ctx.entriesLeft -= (res.scanned || 0) + (res.skipped || 0);
+    ctx.bytesLeft -= res.totalBytes || 0;
+  }
+  if (hit) return hit;
+
+  for (const inner of nested) {
+    if (stopFlag || ctx.entriesLeft <= 0 || ctx.bytesLeft <= 0) break;
+    if (!ctx.tmpDir) ctx.tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aegis-nested-'));
+    const tmp = path.join(ctx.tmpDir, `n${depth}-${nested.indexOf(inner)}${inner.ext}`);
+    try {
+      fs.writeFileSync(tmp, inner.buf, { mode: 0o600 });
+      inner.buf = null;
+      const innerHit = await scanArchiveLayer(tmp, `${label}!${inner.name}`, depth + 1, db, report, emit, ctx);
+      if (innerHit) return Object.assign(innerHit, { entry: `${inner.name}!${innerHit.entry}` });
+    } catch {
+      // bozuk iç arşiv: atla
+    } finally {
+      try {
+        fs.unlinkSync(tmp);
+      } catch {}
+    }
+  }
+  return null;
 }
 
 async function handleThreat(file, meta, opts) {

@@ -475,7 +475,9 @@ test('sample database detects demo payloads', () => {
   });
 
   // hex string rule (Ad_Ortasi $b) with the wildcard byte varied
-  const hexHit = Buffer.from([0x41, 0x45, 0x47, 0x49, 0x53, 0x00, 0x2d]);
+  const hexHit = Buffer.concat([Buffer.from([0x41, 0x45, 0x47, 0x49, 0x53, 0x00, 0x2d]), Buffer.from('DEMO-HEX')]);
+  // the bare 7-byte prefix alone no longer matches (false-positive guard)
+  assert.equal(signatures.checkBuffer(Buffer.from([0x41, 0x45, 0x47, 0x49, 0x53, 0x00, 0x2d]), db), null);
   assert.deepEqual(signatures.checkBuffer(hexHit, db), { name: 'Ad_Ortasi', kind: 'yara' });
 
   // dedicated test-marker rule

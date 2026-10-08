@@ -13,7 +13,8 @@
 rule Ad_Ortasi {
   strings:
     $a = "zararli-ornek-metni" nocase
-    $b = { 41 45 47 49 53 ?? 2D }
+    // "AEGIS?-DEMO-HEX": demo-specific so real files never match by accident
+    $b = { 41 45 47 49 53 ?? 2D 44 45 4D 4F 2D 48 45 58 }
   condition:
     any of them
 }

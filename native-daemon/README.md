@@ -104,36 +104,30 @@ Kurallar:
 > Kalkan ayrıca yalnızca **bildirim** amaçlı `NOTIFY_EXEC` mesajlarını da
 > `verdict:"allow"`, `reason` alanı olmadan yayınlar (izleme modu).
 
-### 2.3 Electron tarafı (ŞU AN YOK — tamamlanması gereken iş)
+### 2.3 Electron tarafı (`src/native-bridge.js`)
 
-`main.js` içinde henüz bir socket sunucusu yok (`main.js`'te `sock`,
-`realtime`, `native` referansı bulunmuyor). Önerilen iskelet:
+Electron ana süreci macOS'ta açılışta socket sunucusunu başlatır:
 
-```js
-const net = require('net');
-const fs = require('fs');
-const SOCK = '/Library/Application Support/Aegis/aegis.sock';
-
-try { fs.unlinkSync(SOCK); } catch {}
-net.createServer((sock) => {
-  let buf = '';
-  sock.on('data', (chunk) => {
-    buf += chunk;
-    let i;
-    while ((i = buf.indexOf('\n')) >= 0) {
-      const line = buf.slice(0, i); buf = buf.slice(i + 1);
-      try { onNativeEvent(JSON.parse(line)); } catch {}
-    }
-  });
-  sock.on('error', () => {});
-}).listen(SOCK, () => fs.chmodSync(SOCK, 0o666));
-```
-
-**İzin gerçeği:** genişletme root olarak çalışır, Electron ise giriş yapan
-kullanıcıda. Bu yüzden socket dosyası Electron tarafından oluşturulmalı ve
-`0666`, üst klasör yazılabilir olmalıdır (aksi halde root genişletme
-bağlanamaz). Alternatif olarak socket'i root çalışan bir yardımcı süreçte
-açtırın.
+* Socket **`~/Library/Application Support/aegis-antivirus/aegis.sock`**
+  (Electron `userData`), izin `0600`. Electron oturum açan kullanıcıda
+  çalıştığı için kök sahipli `/Library/Application Support/Aegis/`
+  klasörüne yazamaz. Genişletmeler kanonik socket yoksa
+  `/Users/*/Library/Application Support/*/aegis.sock` adaylarını dener
+  (`socketCandidates()`); root olduklarından `0600` socket'e bağlanabilirler,
+  başka kullanıcılar bağlanamaz.
+* Her satır şemaya göre doğrulanır (`v:1`, bilinen `source`/`event`), en
+  fazla 64 KB satır, en fazla 4 eşzamanlı bağlantı. Bozuk satırlar sayılıp
+  atılır.
+* `exec` + `verdict:"deny"` → etkinlik akışında "Kalkan engelledi" kaydı +
+  bildirim. `flow-block` → host başına dakikada en fazla bir kayıt.
+  Olaylar yalnızca bilgi amaçlıdır, karantina gibi bir eylemi tetiklemez.
+* Ayarlar'daki **Gerçek zamanlı kalkan** anahtarı
+  `userData/shield-policy.json` içindeki `enabled` alanına yazılır;
+  genişletme bu dosyayı 2 saniyede bir okur. İmza veritabanı da zaten
+  `userData/signatures/db.json`'dadır, böylece imzalı saatlik güncellemeler
+  kalkana da ulaşır.
+* Dashboard'daki kalkan durumu, bağlı bir genişletme varsa veya son 10
+  dakikada olay geldiyse **Aktif** olur.
 
 ---
 
@@ -145,7 +139,7 @@ yapılandırmasında geçerlidir).
 
 | Ne | Varsayılan yol | Override |
 |---|---|---|
-| IPC socket | `/Library/Application Support/Aegis/aegis.sock` | `AEGIS_IPC_SOCKET` |
+| IPC socket | `/Library/Application Support/Aegis/aegis.sock`, yoksa `~/Library/Application Support/*/aegis.sock` | `AEGIS_IPC_SOCKET` |
 | Kalkan politikası | `/Library/Application Support/Aegis/shield-policy.json` | `AEGIS_POLICY` |
 | İmza veritabanı | `/Library/Application Support/Aegis/signatures/db.json` | `AEGIS_SIGNATURE_DB` |
 | Firewall kuralları | `/Library/Application Support/Aegis/firewall-rules.json` | `AEGIS_RULES_FILE` |
@@ -467,24 +461,21 @@ Loglar `os.log` (`Logger`) üzerindendir; engelleme olayları Türkçe metinle
 
 ## 8. Electron tarafında eksik olan işler (dürüst liste)
 
-Bu depoda genişletme kodu hazırdır, ancak aşağıdaki Electron tarafı parçaları
-**henüz yazılmamıştır**:
+Tamamlananlar (`src/native-bridge.js`, §2.3): socket sunucusu, olayların
+etkinlik akışına ve bildirimlere iletilmesi, `realtimeEnabled` →
+`shield-policy.json`, imza DB'sinin genişletmenin bulduğu yerde
+(`userData/signatures/db.json`) tutulması, dashboard durumu.
 
-1. **Socket sunucusu yok** — `main.js`'te UNIX socket dinleyicisi yok; kalkan
-   ve firewall olayları şu an hiçbir yere gitmiyor (§2.3).
-2. **Kural dışa aktarımı yok** — `src/firewall.js` kuralları yalnızca
+Kalanlar:
+
+1. **Kural dışa aktarımı yok** — `src/firewall.js` kuralları yalnızca
    `aegis-store.json` içinde tutuyor; firewall bunu `~/Library/Application
-   Support/*/aegis-store.json` taramasıyla buluyor, bu yüzden şimdilik
-   çalışır; üretilmiş `firewall-rules.json` yok.
-3. **İmza DB kopyası yok** — paket içi `signatures/db.json` genişletmenin
-   okuduğu yola kopyalanmıyor (§3.2).
-4. **Aktivasyon çağrısı yok** — `OSSystemExtensionRequest` kullanılmıyor,
-   genişletme ancak Xcode'dan Run edilerek kuruluyor (§6.3).
-5. **`realtimeEnabled` ayarı hiçbir şey yapmıyor** — `src/store.js`'de
-   `realtimeEnabled: false // native daemon gerektirir` yazıyor, kodda
-   okuyan yok.
-6. **Genişletme → UI köprüsü yok** — olaylar `webContents.send` ile
-   `renderer`'a iletilmiyor; `src/realtime.js` diye bir dosya da yok.
+   Support/*/aegis-store.json` taramasıyla buluyor, bu yüzden çalışır;
+   üretilmiş `firewall-rules.json` yok.
+2. **Aktivasyon çağrısı yok** — `OSSystemExtensionRequest` kullanılmıyor,
+   genişletme ancak Xcode'dan Run edilerek kuruluyor (§6.3). Bunun için
+   uygulamanın içine gömülü bir Xcode sistem genişletmesi hedefi ve Apple
+   yetkisi gerekir.
 
 ---
 

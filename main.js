@@ -11,6 +11,7 @@ const signatures = require('./src/signatures');
 const dbupdate = require('./src/dbupdate');
 const permissions = require('./src/permissions');
 const { createUpdater } = require('./src/updater');
+const { NativeBridge, writePolicy } = require('./src/native-bridge');
 const { Honeypot } = require('./src/honeypot');
 const { Scheduler } = require('./src/scheduler');
 
@@ -111,6 +112,58 @@ function addEvent(ev) {
   const saved = store.addEvent(ev);
   send('event:new', Object.assign({ ts: Date.now() }, ev));
   return saved;
+}
+
+/* ---------------- Native sistem genişletmeleri (native-daemon/) ---------------- */
+
+let nativeBridge = null;
+const flowSeen = new Map(); // host → son kayıt zamanı (olay seli önleme)
+
+function onNativeEvent(ev) {
+  if (ev.source === 'shield' && ev.verdict === 'deny') {
+    const name = ev.threat || ev.reason || 'blocked';
+    addEvent({
+      type: 'threat',
+      i18n: { key: 'event.shieldBlocked', vars: { name } },
+      title: 'Kalkan engelledi: ' + name,
+      detail: ev.path
+    });
+    notify('Aegis kalkanı bir uygulamayı engelledi', `${name}\n${ev.path}`);
+  } else if (ev.source === 'firewall') {
+    const key = ev.host || ev.rule;
+    const now = Date.now();
+    if (now - (flowSeen.get(key) || 0) < 60 * 1000) return;
+    flowSeen.set(key, now);
+    if (flowSeen.size > 500) flowSeen.clear();
+    addEvent({
+      type: 'info',
+      i18n: { key: 'event.flowBlocked', vars: { host: ev.host || '?' } },
+      title: 'Bağlantı engellendi: ' + (ev.host || '?'),
+      detail: ev.rule ? `kural ${ev.rule}` : ''
+    });
+  }
+}
+
+function applyShieldPolicy(settings) {
+  try {
+    writePolicy(app.getPath('userData'), settings);
+  } catch (err) {
+    console.warn('[native] kalkan politikası yazılamadı:', err && err.message);
+  }
+}
+
+function startNativeBridge() {
+  if (process.platform !== 'darwin') return;
+  const socketPath = path.join(app.getPath('userData'), 'aegis.sock');
+  if (Buffer.byteLength(socketPath) > 103) {
+    console.warn('[native] socket yolu çok uzun, köprü başlatılmadı:', socketPath);
+    return;
+  }
+  nativeBridge = new NativeBridge({ socketPath, onEvent: onNativeEvent });
+  nativeBridge.start().catch((err) => {
+    console.warn('[native] köprü başlatılamadı:', err && err.message);
+    nativeBridge = null;
+  });
 }
 
 function applyHoneypot(settings) {
@@ -378,6 +431,7 @@ ipcMain.handle('settings:set', (_e, patch) => {
   const s = store.updateSettings(patch);
   applyHoneypot(s);
   applyScheduler(s);
+  applyShieldPolicy(s);
   return s;
 });
 ipcMain.handle('stats:get', () => store.getStats());
@@ -385,6 +439,7 @@ ipcMain.handle('events:get', () => store.getEvents());
 ipcMain.handle('runtime:get', () => ({
   honeypot: honeypot ? honeypot.status() : { running: false },
   scheduler: scheduler ? scheduler.status() : { enabled: false },
+  native: nativeBridge ? nativeBridge.status() : { listening: false, connected: false },
   scanning: scanner.isScanning()
 }));
 
@@ -420,6 +475,8 @@ app.whenReady().then(() => {
   scheduleDbAutoUpdate();
   updater.schedule();
   const settings = store.getSettings();
+  applyShieldPolicy(settings);
+  startNativeBridge();
   applyHoneypot(settings);
   applyScheduler(settings);
   app.on('activate', () => {
@@ -434,6 +491,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
+  if (nativeBridge) nativeBridge.stop();
   if (honeypot) honeypot.stop();
   if (scheduler) scheduler.stop();
 });

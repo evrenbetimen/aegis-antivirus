@@ -143,6 +143,7 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
 | Ayar/istatistik deposu | `src/store.js` |
 | Tam Disk Erişimi denetimi | `src/permissions.js` |
 | Uygulama güncellemesi | `src/updater.js` |
+| Native genişletme köprüsü | `src/native-bridge.js` |
 
 ## Test
 
@@ -159,9 +160,12 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
 
 ### 🔴 Apple onayı gerektirir (Evre 2 — kod hazır, yetki bekliyor)
 
-1. **Gerçek zamanlı kalkan** — `native-daemon/AegisShield.swift` tam kod;
-   `com.apple.developer.endpoint-security.client` yetkisi Apple Developer
-   portal başvurusu ister
+1. **Gerçek zamanlı kalkan** — `native-daemon/AegisShield.swift` tam kod ve
+   her PR'da macOS CI'da derleniyor; Electron köprüsü (`src/native-bridge.js`:
+   socket sunucusu, politika dosyası, olay akışı, dashboard durumu) hazır.
+   Eksik olan yalnızca `com.apple.developer.endpoint-security.client` yetkisi
+   (Apple Developer portal başvurusu) ve sistem genişletmesinin Xcode
+   hedefi olarak paketlenmesi
 2. **Gerçek paket engelleme** — `AegisFirewall.swift` (NEFilterDataProvider);
    `com.apple.developer.networkextension.network-filter` yetkisi ister
 3. **Süreç/kendi kendini koruma (anti-tamper)** — `pkill` engelleme ve dosya

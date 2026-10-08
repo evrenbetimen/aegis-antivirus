@@ -56,6 +56,24 @@ enum FirewallPaths {
     /// `aegis-store.json` is what `src/store.js` actually writes.
     static let storeFileNames = ["firewall-rules.json", "aegis-store.json"]
 
+    /// Sockets to try, most specific first: the Electron app listens in its
+    /// own userData folder because it cannot write the root owned canonical
+    /// folder.  An explicit override is never second-guessed.
+    static func socketCandidates() -> [String] {
+        var candidates = [socket]
+        if ProcessInfo.processInfo.environment["AEGIS_IPC_SOCKET"] != nil { return candidates }
+        let fm = FileManager.default
+        guard let users = try? fm.contentsOfDirectory(atPath: "/Users") else { return candidates }
+        for user in users.sorted() {
+            let base = "/Users/\(user)/Library/Application Support"
+            guard let apps = try? fm.contentsOfDirectory(atPath: base) else { continue }
+            for app in apps.sorted() {
+                candidates.append("\(base)/\(app)/aegis.sock")
+            }
+        }
+        return candidates
+    }
+
     /// Candidate paths, most specific first.
     static func ruleCandidates() -> [String] {
         var candidates = [canonicalRules]
@@ -253,18 +271,27 @@ final class FirewallRuleStore {
 /// shield's `IPCClient`: connect → write one JSON object per line → on any
 /// error close the socket, drop the event silently and retry later.
 final class FirewallTelemetry: @unchecked Sendable {
-    private let path: String
+    private let preferredPath: String
+    private var path: String
     private let queue = DispatchQueue(label: "com.aegis.antivirus.firewall.ipc")
     private var descriptor: Int32 = -1
     private var lastAttempt: TimeInterval = 0
     private let reconnectInterval: TimeInterval = 5
 
     init(path: String) {
+        self.preferredPath = path
         self.path = path
     }
 
     deinit {
         queue.sync { closeDescriptorLocked() }
+    }
+
+    /// First candidate socket that exists; the preferred path otherwise.
+    private func resolvePath() -> String {
+        let candidates = preferredPath == FirewallPaths.socket ? FirewallPaths.socketCandidates() : [preferredPath]
+        let fm = FileManager.default
+        return candidates.first(where: { fm.fileExists(atPath: $0) }) ?? preferredPath
     }
 
     func send(_ payload: [String: Any]) {
@@ -291,6 +318,7 @@ final class FirewallTelemetry: @unchecked Sendable {
         let now = Date().timeIntervalSince1970
         guard now - lastAttempt >= reconnectInterval else { return false }
         lastAttempt = now
+        path = resolvePath()
 
         let socketFD = socket(AF_UNIX, SOCK_STREAM, 0)
         guard socketFD >= 0 else { return false }

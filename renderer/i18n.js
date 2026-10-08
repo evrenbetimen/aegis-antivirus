@@ -101,6 +101,7 @@ const DICT = {
     // Dashboard
     'hero.title': 'Your system is protected',
     'hero.sub': 'Real-time shield: native daemon pending · Scanning and firewall active',
+    'hero.subLive': 'Real-time shield, scanning and firewall active',
     'score.label': 'security score',
     'stat.scanned': 'Files scanned',
     'stat.threats': 'Threats found',

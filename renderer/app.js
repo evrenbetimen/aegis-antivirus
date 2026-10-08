@@ -60,6 +60,8 @@ const DYN = {
     'time.d': '{n} gün önce',
     'runtime.pending': 'native daemon bekleniyor',
     'runtime.active': 'devrede',
+    'event.shieldBlocked': 'Kalkan engelledi: {name}',
+    'event.flowBlocked': 'Bağlantı engellendi: {host}',
     'fda.granted': '✓ Tam Disk Erişimi verildi',
     'fda.denied': 'Tam Disk Erişimi henüz verilmedi',
     'fda.unknown': 'Tam Disk Erişimi durumu belirlenemedi',
@@ -110,6 +112,8 @@ const DYN = {
     'time.d': '{n} d ago',
     'runtime.pending': 'native daemon pending',
     'runtime.active': 'active',
+    'event.shieldBlocked': 'Shield blocked: {name}',
+    'event.flowBlocked': 'Connection blocked: {host}',
     'fda.granted': '✓ Full Disk Access granted',
     'fda.denied': 'Full Disk Access not granted yet',
     'fda.unknown': 'Full Disk Access status could not be determined',
@@ -218,8 +222,45 @@ function renderEvent(e) {
   return { title: e.title, detail: e.detail || '' };
 }
 
+/* ---------- Gerçek zamanlı kalkan (native daemon) ---------- */
+function shieldLive() {
+  return !!(settings && settings.realtimeEnabled && runtime && runtime.native && runtime.native.connected);
+}
+
+function paintShieldModule() {
+  const el = $('#module-realtime-status');
+  if (!el) return;
+  const live = shieldLive();
+  el.classList.toggle('ok', live);
+  el.classList.toggle('warn', !live);
+  const ico = el.parentElement && el.parentElement.querySelector('.module-ico');
+  if (ico) {
+    ico.classList.toggle('ok', live);
+    ico.classList.toggle('warn', !live);
+  }
+  el.setAttribute('data-i18n', live ? 'status.active' : 'status.standby');
+  el.dataset.i18nOrig = live ? 'Aktif' : 'Beklemede';
+  el.textContent = t(live ? 'status.active' : 'status.standby');
+  const hero = $('#hero-sub');
+  hero.setAttribute('data-i18n', live ? 'hero.subLive' : 'hero.sub');
+  hero.dataset.i18nOrig = live
+    ? 'Gerçek zamanlı kalkan, tarama ve firewall aktif'
+    : 'Gerçek zamanlı kalkan: native daemon bekleniyor · Tarama ve firewall aktif';
+  hero.textContent = window.I18N.getLanguage() === 'tr' ? hero.dataset.i18nOrig : t(hero.getAttribute('data-i18n'));
+}
+
+// Genişletme sonradan bağlanabilir: durumu düzenli yenile
+setInterval(async () => {
+  try {
+    runtime = await window.api.getRuntime();
+    if ($('#page-dashboard').classList.contains('active')) refreshDashboard();
+    else paintShieldModule();
+  } catch {}
+}, 15000);
+
 /* ---------- Dashboard ---------- */
 async function refreshDashboard() {
+  paintShieldModule();
   const stats = await window.api.getStats();
   $('#stat-scanned').textContent = fmtNum(stats.filesScanned);
   $('#stat-threats').textContent = fmtNum(stats.threatsFound);
@@ -229,7 +270,7 @@ async function refreshDashboard() {
   $('#stat-quarantine').textContent = fmtNum(q.length);
   updateBadge('#nav-quarantine-badge', q.length);
 
-  const score = Math.max(35, 100 - Math.min(45, q.length * 8) - (settings && settings.realtimeEnabled ? 0 : 14));
+  const score = Math.max(35, 100 - Math.min(45, q.length * 8) - (shieldLive() ? 0 : 14));
   setScore(score);
 
   // Fidye izleyici durumu
@@ -802,6 +843,7 @@ bind('#set-notifications', 'notifications');
 bind('#set-firewall', 'firewallEnabled');
 bind('#set-archives', 'scanArchives');
 bind('#set-honeypot', 'honeypotEnabled');
+bind('#set-realtime', 'realtimeEnabled');
 bind('#set-scheduled', 'scheduledScan');
 bind('#set-db-auto', 'dbAutoUpdate');
 bind('#set-app-auto', 'appAutoUpdate');

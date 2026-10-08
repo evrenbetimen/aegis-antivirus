@@ -54,3 +54,21 @@ jobs:
         with:
           node-version: 22
       - run: npm audit --audit-level=high
+
+  native:
+    name: Native genişletmeler (Swift derleme)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift sürümü
+        run: swiftc --version
+      # Yetkiler (ES/NE) yalnızca çalışma anında gerekir; tip denetimi ve
+      # derleme onlarsız yapılabilir. Böylece Swift kodu Linux'ta yazılsa da
+      # her PR'da gerçek macOS SDK'sına karşı doğrulanır.
+      - name: AegisShield (Endpoint Security)
+        run: swiftc -parse-as-library -O -framework EndpointSecurity -o "$RUNNER_TEMP/AegisShield" native-daemon/AegisShield.swift
+      - name: AegisFirewall (Network Extension)
+        run: swiftc -parse-as-library -O -framework NetworkExtension -o "$RUNNER_TEMP/AegisFirewall" native-daemon/AegisFirewall.swift
+      - name: Info.plist / entitlements sözdizimi
+        run: |
+          plutil -lint native-daemon/Info.plist native-daemon/entitlements.plist build/entitlements.mac.plist

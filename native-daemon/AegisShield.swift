@@ -48,8 +48,18 @@ private let log = Logger(subsystem: "com.aegis.antivirus.shield", category: "end
 
 enum ShieldPaths {
     /// UNIX domain socket created by the Electron main process (newline JSON).
+    /// The app runs as the logged in user and cannot create files in the root
+    /// owned exchange folder, so it listens in its own userData folder; that
+    /// location is found through `socketCandidates()`.
     static let socket = ProcessInfo.processInfo.environment["AEGIS_IPC_SOCKET"]
         ?? "/Library/Application Support/Aegis/aegis.sock"
+
+    /// Sockets to try, most specific first.  An explicit override is never
+    /// second-guessed.
+    static func socketCandidates() -> [String] {
+        if ProcessInfo.processInfo.environment["AEGIS_IPC_SOCKET"] != nil { return [socket] }
+        return [socket] + userGlobCandidates(suffix: "aegis.sock")
+    }
 
     /// Policy file (`shield-policy.json`), optional.
     static let policy = ProcessInfo.processInfo.environment["AEGIS_POLICY"]
@@ -365,18 +375,27 @@ final class HashCache {
 /// `@unchecked Sendable`: every mutable field is confined to `queue`, so the
 /// class can safely cross the `DispatchQueue.async` boundary (Swift 6 mode).
 final class IPCClient: @unchecked Sendable {
-    private let path: String
+    private let preferredPath: String
+    private var path: String
     private let queue = DispatchQueue(label: "com.aegis.antivirus.shield.ipc")
     private var descriptor: Int32 = -1
     private var lastAttempt: TimeInterval = 0
     private let reconnectInterval: TimeInterval = 5
 
     init(path: String) {
+        self.preferredPath = path
         self.path = path
     }
 
     deinit {
         closeDescriptor()
+    }
+
+    /// First candidate socket that exists; the preferred path otherwise.
+    private func resolvePath() -> String {
+        let candidates = preferredPath == ShieldPaths.socket ? ShieldPaths.socketCandidates() : [preferredPath]
+        let fm = FileManager.default
+        return candidates.first(where: { fm.fileExists(atPath: $0) }) ?? preferredPath
     }
 
     /// Encodes `payload` as one newline terminated JSON line and queues it.
@@ -412,6 +431,7 @@ final class IPCClient: @unchecked Sendable {
         let now = Date().timeIntervalSince1970
         guard now - lastAttempt >= reconnectInterval else { return false }
         lastAttempt = now
+        path = resolvePath()
 
         let socketFD = socket(AF_UNIX, SOCK_STREAM, 0)
         guard socketFD >= 0 else { return false }

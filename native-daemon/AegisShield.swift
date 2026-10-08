@@ -574,10 +574,14 @@ final class AegisShield {
         _ = es_mute_path(newClient, bundlePath, ES_MUTE_PATH_TYPE_PREFIX)
 
         // If a release ever makes us miss a deadline, prefer denying the
-        // operation over killing the client (macOS 27+).
+        // operation over killing the client (macOS 27+).  The symbol only
+        // exists in the macOS 27 SDK; builds against an older SDK (e.g. the
+        // CI runner) pass `-D AEGIS_PRE_MACOS27_SDK` and keep the default.
+        #if !AEGIS_PRE_MACOS27_SDK
         if #available(macOS 27.0, *) {
             _ = es_set_deadline_miss_mode(newClient, ES_DEADLINE_MISS_MODE_FAIL_CLOSED)
         }
+        #endif
 
         running = true
         log.info("AegisShield başladı — \(events.count) olay abonesi, imzaDB=\(self.signatures.databaseVersion, privacy: .public)")

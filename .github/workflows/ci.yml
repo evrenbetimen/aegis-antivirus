@@ -65,10 +65,19 @@ jobs:
       # Yetkiler (ES/NE) yalnızca çalışma anında gerekir; tip denetimi ve
       # derleme onlarsız yapılabilir. Böylece Swift kodu Linux'ta yazılsa da
       # her PR'da gerçek macOS SDK'sına karşı doğrulanır.
+      # Runner'ın SDK'sı macOS 27 API'lerini içermeyebilir: o durumda
+      # yalnızca o API'yi kullanan blok AEGIS_PRE_MACOS27_SDK ile dışarıda kalır.
       - name: AegisShield (Endpoint Security)
-        run: swiftc -parse-as-library -O -framework EndpointSecurity -o "$RUNNER_TEMP/AegisShield" native-daemon/AegisShield.swift
+        run: |
+          sdk=$(xcrun --show-sdk-version)
+          flags=()
+          if [ "${sdk%%.*}" -lt 27 ]; then flags+=(-D AEGIS_PRE_MACOS27_SDK); fi
+          echo "macOS SDK $sdk ${flags[*]}"
+          swiftc -parse-as-library -O "${flags[@]}" -framework EndpointSecurity -o "$RUNNER_TEMP/AegisShield" native-daemon/AegisShield.swift
       - name: AegisFirewall (Network Extension)
+        if: success() || failure()
         run: swiftc -parse-as-library -O -framework NetworkExtension -o "$RUNNER_TEMP/AegisFirewall" native-daemon/AegisFirewall.swift
       - name: Info.plist / entitlements sözdizimi
+        if: success() || failure()
         run: |
           plutil -lint native-daemon/Info.plist native-daemon/entitlements.plist build/entitlements.mac.plist

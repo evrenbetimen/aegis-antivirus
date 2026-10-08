@@ -324,7 +324,7 @@ test('parseYara: broken rules are skipped, never thrown', () => {
   const text = `
 rule Good_One { strings: $a = "good-one-token" condition: $a }
 rule Broken_NoClose { strings: $a = "oops"
-rule Broken_Condition { strings: $a = "x" condition: filesize > 10 }
+rule Broken_Condition { strings: $a = "x" condition: pe.is_dll() }
 rule Broken_Undeclared { strings: $a = "x" condition: $a and $b }
 rule Broken_NoCondition { strings: $a = "x" }
 rule Broken_Hex { strings: $h = { 41 4 } condition: $h }
@@ -475,7 +475,9 @@ test('sample database detects demo payloads', () => {
   });
 
   // hex string rule (Ad_Ortasi $b) with the wildcard byte varied
-  const hexHit = Buffer.from([0x41, 0x45, 0x47, 0x49, 0x53, 0x00, 0x2d]);
+  const hexHit = Buffer.concat([Buffer.from([0x41, 0x45, 0x47, 0x49, 0x53, 0x00, 0x2d]), Buffer.from('DEMO-HEX')]);
+  // the bare 7-byte prefix alone no longer matches (false-positive guard)
+  assert.equal(signatures.checkBuffer(Buffer.from([0x41, 0x45, 0x47, 0x49, 0x53, 0x00, 0x2d]), db), null);
   assert.deepEqual(signatures.checkBuffer(hexHit, db), { name: 'Ad_Ortasi', kind: 'yara' });
 
   // dedicated test-marker rule

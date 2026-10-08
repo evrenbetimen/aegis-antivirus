@@ -1,0 +1,81 @@
+name: İmza veritabanı yayını
+
+# Saatlik: MalwareBazaar "son 60 dk" listesi + ReversingLabs YARA kuralları →
+# imzalı db.json → "signatures" sürümüne yüklenir. Uygulama bu adresi
+# (Ayarlar → İmza veritabanı) varsayılan olarak kullanır ve imzayı doğrular.
+#
+# Gerekli depo sırları (Settings → Secrets and variables → Actions):
+#   DB_SIGNING_KEY          scripts/db-keygen.js ile üretilen özel anahtar (PEM)
+#   MALWAREBAZAAR_AUTH_KEY  (isteğe bağlı) https://auth.abuse.ch ücretsiz anahtar
+#
+# Uygulamalar sürüm dosyalarını oturum açmadan indirir; depo gizliyse yayını
+# herkese açık ayrı bir depoya yapın:
+#   vars.SIGNATURES_REPO    ör. kullanici/aegis-signatures (varsayılan: bu depo)
+#   SIGNATURES_TOKEN        o depoya "contents: write" yetkili ince ayarlı jeton
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: signatures
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.SIGNATURES_TOKEN || github.token }}
+      REPO: ${{ vars.SIGNATURES_REPO || github.repository }}
+      DB_SIGNING_KEY: ${{ secrets.DB_SIGNING_KEY }}
+      MALWAREBAZAAR_AUTH_KEY: ${{ secrets.MALWAREBAZAAR_AUTH_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: İmzalama anahtarı var mı?
+        run: |
+          if [ -z "$DB_SIGNING_KEY" ]; then
+            echo "::error::DB_SIGNING_KEY sırrı tanımlı değil (Settings → Secrets → Actions)"
+            exit 1
+          fi
+
+      - name: YARA kural kaynağı (ReversingLabs, MIT)
+        run: git clone --depth 1 https://github.com/reversinglabs/reversinglabs-yara-rules.git "$RUNNER_TEMP/reversinglabs-yara-rules"
+
+      - name: Önceki yayını al (kayan hash penceresi)
+        run: gh release download signatures --repo "$REPO" --pattern db.json --dir "$RUNNER_TEMP/prev" || echo "önceki yayın yok"
+
+      - name: DB üret
+        run: |
+          PREV=()
+          if [ -f "$RUNNER_TEMP/prev/db.json" ]; then PREV=(--previous "$RUNNER_TEMP/prev/db.json"); fi
+          node scripts/build-db.js --out "$RUNNER_TEMP/out" "${PREV[@]}" \
+            --mb-csv https://bazaar.abuse.ch/export/csv/recent/ \
+            --yara-dir "$RUNNER_TEMP/reversinglabs-yara-rules/yara"
+
+      - name: İmzala ve uygulamanın doğrulama yoluyla denetle
+        run: |
+          umask 077
+          printf '%s\n' "$DB_SIGNING_KEY" > "$RUNNER_TEMP/key.pem"
+          node scripts/sign-db.js "$RUNNER_TEMP/out/db.json" "$RUNNER_TEMP/key.pem"
+          rm -f "$RUNNER_TEMP/key.pem"
+          node -e "
+            const d = require('./src/dbupdate'); const fs = require('fs');
+            const pub = fs.readFileSync('signatures/db-public.pem', 'utf8');
+            d.update({ url: 'file://' + process.argv[1], dir: process.env.RUNNER_TEMP + '/verify', publicKey: pub })
+              .then((r) => { console.log(r); if (!r.ok) process.exit(1); });
+          " "$RUNNER_TEMP/out/db.json"
+
+      - name: Yayınla
+        run: |
+          gh release view signatures --repo "$REPO" >/dev/null 2>&1 || \
+            gh release create signatures --repo "$REPO" --title "İmza veritabanı" --latest=false \
+              --notes "Saatlik otomatik imza veritabanı (MalwareBazaar + ReversingLabs YARA). Uygulama .sig dosyasını gömülü açık anahtarla doğrular."
+          gh release upload signatures --repo "$REPO" "$RUNNER_TEMP/out/db.json" "$RUNNER_TEMP/out/db.json.sha256" "$RUNNER_TEMP/out/db.json.sig" --clobber

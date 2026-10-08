@@ -155,7 +155,7 @@
                 <div class="module">
                   <div class="module-ico warn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg></div>
                   <div class="module-info"><strong data-i18n="module.realtime">Gerçek zamanlı kalkan</strong><span data-i18n="module.realtime.sub">Endpoint Security native daemon gerektirir</span></div>
-                  <span class="status-tag warn" data-i18n="status.standby">Beklemede</span>
+                  <span class="status-tag warn" id="module-realtime-status" data-i18n="status.standby">Beklemede</span>
                 </div>
                 <div class="module">
                   <div class="module-ico ok"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg></div>
@@ -411,7 +411,7 @@
                 </label>
                 <label class="setting">
                   <div><strong data-i18n="set.realtime">Gerçek zamanlı kalkan</strong><span data-i18n="set.realtime.sub">Native daemon (Endpoint Security) gerektirir</span></div>
-                  <span class="switch"><input type="checkbox" id="set-realtime" disabled><span class="slider"></span></span>
+                  <span class="switch"><input type="checkbox" id="set-realtime"><span class="slider"></span></span>
                 </label>
               </div>
 
@@ -434,6 +434,10 @@
                   <button class="btn ghost sm" id="btn-db-update" data-i18n="set.dbUpdate.check">Güncelleme denetle</button>
                 </div>
                 <input class="text-input" id="set-db-url" placeholder="https://…/db.json" />
+                <label class="setting">
+                  <div><strong data-i18n="set.dbAuto">Otomatik güncelle</strong><span data-i18n="set.dbAuto.sub">İmzalı veritabanını 6 saatte bir indir (yayıncı imzası doğrulanır)</span></div>
+                  <span class="switch"><input type="checkbox" id="set-db-auto"><span class="slider"></span></span>
+                </label>
               </div>
 
               <div class="sub-block">
@@ -460,11 +464,29 @@
               <div class="sub-block">
                 <div class="setting-inline">
                   <div>
+                    <strong data-i18n="set.appUpdate">Uygulama güncellemeleri</strong>
+                    <span class="muted" id="app-update-status">—</span>
+                  </div>
+                  <div class="btn-row">
+                    <button class="btn primary sm" id="btn-app-install" hidden data-i18n="set.appUpdate.install">Yeniden başlat ve kur</button>
+                    <button class="btn ghost sm" id="btn-app-update" data-i18n="set.dbUpdate.check">Güncelleme denetle</button>
+                  </div>
+                </div>
+                <label class="setting">
+                  <div><strong data-i18n="set.appAuto">Otomatik güncelle</strong><span data-i18n="set.appAuto.sub">Yeni sürümleri arka planda indir, uygulamadan çıkarken kur</span></div>
+                  <span class="switch"><input type="checkbox" id="set-app-auto"><span class="slider"></span></span>
+                </label>
+              </div>
+
+              <div class="sub-block">
+                <div class="setting-inline">
+                  <div>
                     <strong data-i18n="set.tcc">Tam Disk Erişimi</strong>
                     <span class="muted" data-i18n="set.tcc.sub">Tüm klasörleri taramak için Aegis'e Tam Disk Erişimi verin (Sistem Ayarları → Gizlilik ve Güvenlik).</span>
                   </div>
                   <button class="btn ghost sm" id="btn-tcc" data-i18n="set.tcc.open">Sistem Ayarları'nı aç</button>
                 </div>
+                <div class="muted tcc-status" id="tcc-status"></div>
               </div>
             </div>
 
@@ -478,7 +500,7 @@
                   </svg>
                 </div>
                 <h4>Aegis Security Suite</h4>
-                <p class="muted" data-i18n="set.version">Sürüm 0.1.0 · İmza DB v2026.10</p>
+                <p class="muted" id="app-version">Sürüm 0.1.0</p>
                 <p class="muted" id="set-about-sub" data-i18n="set.about.sub">Talep üzerine tarama, şifreli karantina, kural tabanlı firewall</p>
                 <h5 class="about-h" data-i18n="set.roadmap">Yol haritası</h5>
                 <ul class="about-list">
@@ -495,6 +517,23 @@
 
       </div>
     </main>
+  </div>
+  <div class="modal-overlay" id="fda-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="fda-title">
+      <h3 id="fda-title" data-i18n="fda.title">Tam Disk Erişimi verin</h3>
+      <p class="muted" data-i18n="fda.body">macOS, Mail, Safari, Mesajlar ve diğer korumalı klasörleri izniniz olmadan okumamıza izin vermiyor. Aegis bu klasörleri tarayamazsa içlerindeki tehditleri de bulamaz.</p>
+      <ol class="fda-steps">
+        <li data-i18n="fda.step1">"Sistem Ayarları'nı aç" düğmesine basın.</li>
+        <li data-i18n="fda.step2">Listede Aegis'i bulup anahtarını açın. Listede yoksa + ile Uygulamalar klasöründen ekleyin.</li>
+        <li data-i18n="fda.step3">macOS "Çık ve Yeniden Aç" derse onaylayın. Aegis yeniden açıldığında izin etkin olur.</li>
+      </ol>
+      <div class="fda-state" id="fda-state"></div>
+      <div class="modal-actions">
+        <button class="btn ghost sm" id="fda-later" data-i18n="fda.later">Daha sonra</button>
+        <button class="btn ghost sm" id="fda-recheck" data-i18n="fda.recheck">Tekrar kontrol et</button>
+        <button class="btn primary sm" id="fda-open" data-i18n="set.tcc.open">Sistem Ayarları'nı aç</button>
+      </div>
+    </div>
   </div>
   <script src="i18n.js"></script>
   <script src="app.js"></script>

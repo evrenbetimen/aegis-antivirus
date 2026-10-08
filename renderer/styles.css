@@ -497,3 +497,28 @@ code { background: rgba(148, 163, 184, 0.12); padding: 1px 6px; border-radius: 6
 }
 .history-threat .cell-path { flex: 1; min-width: 0; }
 .history-threat .row-ok { font-size: 11px; flex-shrink: 0; }
+
+/* ---------- Modal (Tam Disk Erişimi tanıtımı) ---------- */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(2, 6, 14, 0.72); backdrop-filter: blur(6px);
+}
+.modal-overlay[hidden] { display: none; }
+.modal {
+  width: min(520px, calc(100vw - 48px));
+  background: var(--panel); border: 1px solid var(--border-strong);
+  border-radius: var(--r); box-shadow: var(--shadow); padding: 26px 28px;
+}
+.modal h3 { margin: 0 0 10px; font-size: 18px; }
+.modal p { margin: 0 0 14px; line-height: 1.5; }
+.fda-steps { margin: 0 0 16px; padding-left: 20px; line-height: 1.6; font-size: 13.5px; }
+.fda-state { min-height: 20px; margin-bottom: 14px; font-size: 13px; }
+.fda-state.ok { color: var(--green); }
+.fda-state.bad { color: var(--amber); }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+.tcc-status { margin-top: 8px; font-size: 12.5px; }
+.tcc-status.ok { color: var(--green); }
+.tcc-status.bad { color: var(--amber); }
+.btn-row { display: flex; gap: 8px; white-space: nowrap; }
+.btn-row [hidden] { display: none; }

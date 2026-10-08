@@ -36,6 +36,11 @@ contextBridge.exposeInMainWorld('api', {
   getStats: () => ipcRenderer.invoke('stats:get'),
   getEvents: () => ipcRenderer.invoke('events:get'),
   getRuntime: () => ipcRenderer.invoke('runtime:get'),
+  fdaStatus: () => ipcRenderer.invoke('perm:fda'),
+  appVersion: () => ipcRenderer.invoke('update:status'),
+  updateCheck: () => ipcRenderer.invoke('update:check'),
+  updateInstall: () => ipcRenderer.invoke('update:install'),
+  onUpdateStatus: (cb) => ipcRenderer.on('update:status', (_e, s) => cb(s)),
   openPath: (p) => ipcRenderer.invoke('shell:openPath', p),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 

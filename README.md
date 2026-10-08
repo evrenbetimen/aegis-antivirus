@@ -17,7 +17,9 @@ npm test         # uçtan uca test (tarama + karantina + firewall + yeni modüll
 Modül testleri (electron gerektirmez):
 
 ```bash
-node --test test/signatures.test.js   # imza DB + mini YARA motoru
+node --test test/signatures.test.js   # imza DB + YARA motoru
+node --test test/yara-engine.test.js  # genişletilmiş YARA yapıları
+node --test test/build-db.test.js     # imza DB üretim hattı
 node --test test/archive.test.js      # arşiv tarama (zip/tar/gz)
 node --test test/cache.test.js        # hash önbelleği
 node --test test/dbupdate.test.js     # imza DB güncelleme (Ed25519, yönlendirme, dizin)
@@ -48,9 +50,17 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
 ### Çalışır durumda (Evre 1)
 
 - **Tarama motoru**
-  - SHA-256 imza veritabanı (`signatures/db.json`) + **mini YARA motoru**
-    (`signatures/rules.yar`): metin/hex dizgiler, `nocase`, `any/all of them`,
-    `and/or/not`, `#a == N` — parse hatalarında kural atlanır, asla çökmez
+  - SHA-256 imza veritabanı (`signatures/db.json`) + **YARA motoru**
+    (`signatures/rules.yar` + yayındaki gömülü kurallar): metin dizgiler
+    (`nocase/ascii/wide/fullword`), hex (`??`, `A?`, `~XX`, `[n-m]` atlama,
+    `( AA | BB )`), `uint16(0) == 0x5A4D`, `filesize`, `$a at N`, aritmetik,
+    `N of ($x*)`. Desteklenmeyen yapı (pe/elf modülleri, regex, `for`, `in`)
+    içeren kural **atlanır**, asla yanlış değerlendirilmez
+  - **Gerçek imza beslemesi**: saatlik GitHub Actions (`signatures.yml`) —
+    MalwareBazaar (abuse.ch, CC0) son örnek hash'leri (kayan pencere, 100k) +
+    ReversingLabs YARA kuralları (MIT; motorun desteklediği ~290 kural) →
+    imzalı `db.json` → `signatures` sürümü. Uygulama varsayılan olarak bunu
+    6 saatte bir indirir (Ayarlar → Otomatik güncelle)
   - EICAR test dosyası (kodda ham metin yok — AV yarışı için)
   - Sezgisel kurallar: çift uzantı, indirilen Windows binary'leri,
     LaunchAgent kalıcılığı
@@ -131,6 +141,9 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
 | Zamanlayıcı | `src/scheduler.js` |
 | İmza DB güncelleme | `src/dbupdate.js` |
 | Ayar/istatistik deposu | `src/store.js` |
+| Tam Disk Erişimi denetimi | `src/permissions.js` |
+| Uygulama güncellemesi | `src/updater.js` |
+| Native genişletme köprüsü | `src/native-bridge.js` |
 
 ## Test
 
@@ -147,9 +160,12 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
 
 ### 🔴 Apple onayı gerektirir (Evre 2 — kod hazır, yetki bekliyor)
 
-1. **Gerçek zamanlı kalkan** — `native-daemon/AegisShield.swift` tam kod;
-   `com.apple.developer.endpoint-security.client` yetkisi Apple Developer
-   portal başvurusu ister
+1. **Gerçek zamanlı kalkan** — `native-daemon/AegisShield.swift` tam kod ve
+   her PR'da macOS CI'da derleniyor; Electron köprüsü (`src/native-bridge.js`:
+   socket sunucusu, politika dosyası, olay akışı, dashboard durumu) hazır.
+   Eksik olan yalnızca `com.apple.developer.endpoint-security.client` yetkisi
+   (Apple Developer portal başvurusu) ve sistem genişletmesinin Xcode
+   hedefi olarak paketlenmesi
 2. **Gerçek paket engelleme** — `AegisFirewall.swift` (NEFilterDataProvider);
    `com.apple.developer.networkextension.network-filter` yetkisi ister
 3. **Süreç/kendi kendini koruma (anti-tamper)** — `pkill` engelleme ve dosya
@@ -157,14 +173,26 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
 
 ### 🟡 Dağıtım öncesi (sertifika / kullanıcı izni)
 
-4. **Kod imzası + notarization** — `electron-builder` + `build/entitlements.mac.plist`
-   hazır; **Developer ID sertifikası** şart (yoksa macOS "hasarlı" uyarısı)
-5. **Tam Disk Erişimi (TCC)** — UI'da rehber butonu var; ilk kurulumda akış
-   olarak istenmeli (Ayarlar → Gizlilik ve Güvenlik)
-6. **Gerçek imza istihbaratı** — şu an demo hash + örnek YARA kuralları;
-   gerçek tehdit beslemesi (ör. açık imza kaynakları) gerekiyor; Ed25519
-   imzalı yayın altyapısı hazır (yayıncı anahtarı üretilip paketlenmeli)
-7. **Otomatik uygulama güncellemesi** — `electron-updater` entegrasyonu
+4. **Kod imzası + notarization** — `.github/workflows/release.yml` hazır:
+   `v*` etiketi push edilince macOS'ta derler, Developer ID ile imzalar,
+   notarize eder ve GitHub Release'e yükler. Gerekli secret'lar: `CSC_LINK`
+   (.p12, base64), `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`,
+   `APPLE_TEAM_ID`. Kısıtlı ES/NE yetkileri uygulama entitlements'ından
+   çıkarıldı (profilsiz imzalanmış uygulama açılışta öldürülür); bunlar
+   yalnızca `native-daemon/` sistem genişletmelerine ait
+5. ✅ **Tam Disk Erişimi (TCC)** — ilk açılışta izin yoksa rehber penceresi
+   çıkar; Sistem Ayarları'ndan dönünce durum otomatik yenilenir, Ayarlar'da
+   güncel durum görünür (`src/permissions.js`)
+6. **Gerçek imza istihbaratı** — saatlik besleme hazır (`signatures.yml`);
+   çalışması için depo sırrı `DB_SIGNING_KEY` (özel anahtar) gerekir. Depo
+   gizliyse yayın herkese açık ayrı depoya yapılmalı (`vars.SIGNATURES_REPO`
+   + `SIGNATURES_TOKEN`). Authenticode sertifika kuralları (pe modülü) henüz yok
+7. ✅ **Otomatik uygulama güncellemesi** — `electron-updater` (`src/updater.js`):
+   imzalı macOS sürümünde 30 sn sonra ve 6 saatte bir denetler, arka planda
+   indirir, çıkışta kurar (Ayarlar → Uygulama güncellemeleri). Güncellemeler
+   `release.yml`'ın yüklediği `latest-mac.yml` + `.zip`'ten gelir; depo
+   gizliyse sürümler `vars.RELEASES_REPO` + `RELEASES_TOKEN` ile herkese açık
+   ayrı bir depoya yayınlanmalı
 8. **Uygulama kapanınca da çalışan zamanlanmış tarama** — launchd plist
    iskeleti (README: `native-daemon/` içinde)
 

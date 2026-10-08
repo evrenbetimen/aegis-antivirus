@@ -106,6 +106,7 @@ function validateDb(obj) {
   if (!obj.sha256 || typeof obj.sha256 !== 'object' || Array.isArray(obj.sha256)) {
     return 'sha256 eşlemesi yok';
   }
+  if (obj.yara !== undefined && typeof obj.yara !== 'string') return 'yara alanı metin olmalı';
   for (const [k, v] of Object.entries(obj.sha256)) {
     if (!/^[0-9a-f]{64}$/i.test(k)) return `Geçersiz hash anahtarı: ${k}`;
     if (typeof v !== 'string') return `Geçersiz imza değeri: ${k}`;

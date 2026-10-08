@@ -5,8 +5,11 @@ const { sanitizeSettingsPatch, sanitizeRules } = require('./validate');
 
 const FILE = path.join(app.getPath('userData'), 'aegis-store.json');
 
+// Saatlik imzalı imza DB yayını (.github/workflows/signatures.yml)
+const DEFAULT_DB_URL = 'https://github.com/evrenbetimen/aegis-antivirus/releases/download/signatures/db.json';
+
 const DEFAULTS = {
-  settingsVersion: 2,
+  settingsVersion: 3,
   settings: {
     autoQuarantine: true,
     heuristics: true,
@@ -20,8 +23,10 @@ const DEFAULTS = {
     scheduledScan: false,
     scanIntervalHours: 24,
     honeypotEnabled: true, // fidye yem dosyaları
-    dbAutoUpdate: false,
-    dbUrl: '' // imza DB güncelleme adresi
+    dbAutoUpdate: true,
+    appAutoUpdate: true, // uygulama güncellemelerini indir, çıkışta kur
+    fdaOnboardingDone: false, // ilk açılış Tam Disk Erişimi tanıtımı gösterildi mi
+    dbUrl: DEFAULT_DB_URL // imza DB güncelleme adresi
   },
   stats: {
     filesScanned: 0,
@@ -41,7 +46,7 @@ const DEFAULTS = {
 
 let cache = null;
 
-const CURRENT_VERSION = 2;
+const CURRENT_VERSION = 3;
 const OLD_DEMO_HOSTS = ['malware.example.com', 'telemetry.bad-ads.net', 'api.aegis.local'];
 
 function load() {
@@ -66,6 +71,11 @@ function load() {
     const untouched =
       cache.rules.length === 3 && cache.rules.every((r, i) => r.id === `r${i + 1}` && OLD_DEMO_HOSTS.includes(r.host));
     if (untouched) cache.rules = JSON.parse(JSON.stringify(DEFAULTS.rules));
+  }
+  if (raw && ver < 3) {
+    // Gerçek imza beslemesi: adres hiç ayarlanmadıysa varsayılan yayın + otomatik güncelleme
+    if (!cache.settings.dbUrl) cache.settings.dbUrl = DEFAULT_DB_URL;
+    cache.settings.dbAutoUpdate = true;
   }
   if (!raw || ver < CURRENT_VERSION) {
     cache.settingsVersion = CURRENT_VERSION;

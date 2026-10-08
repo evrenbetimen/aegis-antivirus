@@ -157,7 +157,13 @@ function tokenize(text) {
         tokens.push({ t: 'num', v: parseInt(text.slice(i, j), 16) });
       } else {
         while (j < n && /[0-9]/.test(text[j])) j += 1;
-        tokens.push({ t: 'num', v: parseInt(text.slice(i, j), 10) });
+        let value = parseInt(text.slice(i, j), 10);
+        // Size suffixes: 200KB, 2MB
+        if (/^[KM]B/.test(text.slice(j, j + 2)) && !/[A-Za-z0-9_]/.test(text[j + 2] || '')) {
+          value *= text[j] === 'K' ? 1024 : 1024 * 1024;
+          j += 2;
+        }
+        tokens.push({ t: 'num', v: value });
       }
       i = j;
       continue;
@@ -215,55 +221,163 @@ function makeTextPattern(id, value) {
   if (value.length === 0) {
     throw new ParseError(`string $${id}: empty text patterns are not supported`);
   }
-  const bytes = Buffer.from(value, 'utf8');
   return {
     id,
     kind: 'text',
-    bytes,
-    mask: null,
+    text: value,
     nocase: false,
-    lowerBytes: asciiLower(bytes)
+    ascii: false,
+    wide: false,
+    fullword: false,
+    variants: null
   };
 }
 
+// Applied once all modifiers are known: ascii/wide decide which byte forms
+// are searched (YARA default is ascii only; `wide` alone means UTF-16LE only).
+function finalizeTextPattern(p) {
+  const forms = [];
+  if (!p.wide || p.ascii) forms.push({ bytes: Buffer.from(p.text, 'utf8'), step: 1 });
+  if (p.wide) forms.push({ bytes: Buffer.from(p.text, 'utf16le'), step: 2 });
+  p.variants = forms.map((f) => ({ bytes: f.bytes, lowerBytes: asciiLower(f.bytes), step: f.step }));
+  return p;
+}
+
+function hexByteRe(v) {
+  return '\\x' + v.toString(16).padStart(2, '0');
+}
+
+// One hex byte token ("AA", "A?", "?A", "??") → regex atom over a latin1 string.
+function hexAtom(id, hi, lo) {
+  const okHi = hi === '?' || HEX_CHAR_RE.test(hi);
+  const okLo = lo === '?' || HEX_CHAR_RE.test(lo);
+  if (!okHi || !okLo) throw new ParseError(`string $${id}: invalid hex character "${okHi ? lo : hi}"`);
+  if (hi === '?' && lo === '?') return { re: '[\\s\\S]', exact: null };
+  if (hi !== '?' && lo !== '?') {
+    const v = parseInt(hi + lo, 16);
+    return { re: hexByteRe(v), exact: v };
+  }
+  if (lo === '?') {
+    const base = parseInt(hi, 16) << 4;
+    return { re: `[${hexByteRe(base)}-${hexByteRe(base + 15)}]`, exact: null };
+  }
+  const low = parseInt(lo, 16);
+  let cls = '';
+  for (let h = 0; h < 16; h += 1) cls += hexByteRe((h << 4) | low);
+  return { re: `[${cls}]`, exact: null };
+}
+
+/**
+ * Hex strings: bytes, ?? / nibble wildcards, ~XX, jumps [n] [n-m] [n-] [-]
+ * and alternatives ( AA | BB CC ). Fully exact strings keep a byte buffer
+ * (indexOf fast path); everything else compiles to a RegExp over latin1.
+ */
 function makeHexPattern(id, raw) {
-  const compact = raw.replace(/\s+/g, '');
-  if (compact.length === 0 || compact.length % 2 !== 0) {
+  const src = raw.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, ' ').replace(/\s+/g, '');
+  if (src.length === 0) throw new ParseError(`string $${id}: malformed hex pattern`);
+
+  let re = '';
+  const exactBytes = [];
+  let allExact = true;
+  let depth = 0;
+  let atoms = 0;
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === '[') {
+      const close = src.indexOf(']', i);
+      if (close === -1) throw new ParseError(`string $${id}: malformed hex pattern`);
+      const m = /^(\d*)(-?)(\d*)$/.exec(src.slice(i + 1, close));
+      if (!m || (!m[2] && !m[1])) throw new ParseError(`string $${id}: invalid jump`);
+      const lo = m[1] ? Number(m[1]) : 0;
+      if (!m[2]) re += `[\\s\\S]{${lo}}`;
+      else if (m[3]) {
+        const hi = Number(m[3]);
+        if (hi < lo) throw new ParseError(`string $${id}: invalid jump`);
+        re += `[\\s\\S]{${lo},${hi}}?`;
+      } else re += `[\\s\\S]{${lo},}?`;
+      allExact = false;
+      i = close + 1;
+      continue;
+    }
+    if (c === '(') {
+      re += '(?:';
+      depth += 1;
+      allExact = false;
+      i += 1;
+      continue;
+    }
+    if (c === '|') {
+      if (depth === 0) throw new ParseError(`string $${id}: "|" outside of an alternative`);
+      re += '|';
+      i += 1;
+      continue;
+    }
+    if (c === ')') {
+      if (depth === 0) throw new ParseError(`string $${id}: malformed hex pattern`);
+      re += ')';
+      depth -= 1;
+      i += 1;
+      continue;
+    }
+    if (c === '~') {
+      if (i + 2 >= src.length) throw new ParseError(`string $${id}: malformed hex pattern`);
+      const a = hexAtom(id, src[i + 1], src[i + 2]);
+      if (a.exact === null) throw new ParseError(`string $${id}: unsupported "~" with wildcard`);
+      re += `[^${hexByteRe(a.exact)}]`;
+      allExact = false;
+      atoms += 1;
+      i += 3;
+      continue;
+    }
+    if (i + 1 >= src.length) throw new ParseError(`string $${id}: malformed hex pattern`);
+    const a = hexAtom(id, c, src[i + 1]);
+    re += a.re;
+    if (a.exact === null) allExact = false;
+    else exactBytes.push(a.exact);
+    atoms += 1;
+    i += 2;
+  }
+  if (depth !== 0 || atoms === 0) throw new ParseError(`string $${id}: malformed hex pattern`);
+
+  if (allExact) {
+    return { id, kind: 'hex', bytes: Buffer.from(exactBytes), regex: null, nocase: false };
+  }
+  let regex;
+  try {
+    regex = new RegExp(re, 'g');
+  } catch {
     throw new ParseError(`string $${id}: malformed hex pattern`);
   }
-  const n = compact.length / 2;
-  const bytes = Buffer.alloc(n);
-  const mask = Buffer.alloc(n);
-  for (let i = 0; i < n; i += 1) {
-    let value = 0;
-    let maskByte = 0;
-    for (let half = 0; half < 2; half += 1) {
-      const ch = compact[i * 2 + half];
-      if (ch === '?') continue;
-      if (!HEX_CHAR_RE.test(ch)) {
-        throw new ParseError(`string $${id}: invalid hex character "${ch}"`);
-      }
-      const nibble = parseInt(ch, 16);
-      value |= nibble << (half === 0 ? 4 : 0);
-      maskByte |= half === 0 ? 0xf0 : 0x0f;
-    }
-    bytes[i] = value;
-    mask[i] = maskByte;
-  }
-  const exact = mask.every((m) => m === 0xff);
-  return {
-    id,
-    kind: 'hex',
-    bytes,
-    mask: exact ? null : mask, // fully exact hex strings take the fast path
-    nocase: false,
-    lowerBytes: bytes
-  };
+  return { id, kind: 'hex', bytes: null, regex, nocase: false };
 }
 
 /* ------------------------------------------------------------------ *
  * Condition parsing (recursive descent, limited to the rule body)
+ *
+ * Booleans: and, or, not, ( ), true, false, $a, $a at <expr>
+ * Numbers:  literals (0x.., KB/MB), filesize, #a, uint8/16/32[be](<expr>),
+ *           int8/16/32[be](<expr>), + - * \ % & | ^ << >>, unary - ~
+ * Compare:  == != < <= > >=
+ * Sets:     any|all|none|<n> of them | ( $a, $b*, $* )
+ * Anything else (modules, regex, `in`, `for`, rule references) is rejected so
+ * the rule is skipped instead of being mis-evaluated.
  * ------------------------------------------------------------------ */
+
+const INT_FUNCS = new Map([
+  ['uint8', { size: 1, signed: false, be: false }],
+  ['uint16', { size: 2, signed: false, be: false }],
+  ['uint32', { size: 4, signed: false, be: false }],
+  ['uint8be', { size: 1, signed: false, be: true }],
+  ['uint16be', { size: 2, signed: false, be: true }],
+  ['uint32be', { size: 4, signed: false, be: true }],
+  ['int8', { size: 1, signed: true, be: false }],
+  ['int16', { size: 2, signed: true, be: false }],
+  ['int32', { size: 4, signed: true, be: false }],
+  ['int8be', { size: 1, signed: true, be: true }],
+  ['int16be', { size: 2, signed: true, be: true }],
+  ['int32be', { size: 4, signed: true, be: true }]
+]);
 
 function parseConditionExpr(tokens, pos, limit) {
   return parseOrExpr(tokens, pos, limit);
@@ -271,7 +385,7 @@ function parseConditionExpr(tokens, pos, limit) {
 
 function parseOrExpr(tokens, pos, limit) {
   let left = parseAndExpr(tokens, pos, limit);
-  while (pos < limit && isWord(tokens[left.pos], 'or')) {
+  while (left.pos < limit && isWord(tokens[left.pos], 'or')) {
     const right = parseAndExpr(tokens, left.pos + 1, limit);
     left = { node: { type: 'or', left: left.node, right: right.node }, pos: right.pos };
   }
@@ -280,7 +394,7 @@ function parseOrExpr(tokens, pos, limit) {
 
 function parseAndExpr(tokens, pos, limit) {
   let left = parseNotExpr(tokens, pos, limit);
-  while (pos < limit && isWord(tokens[left.pos], 'and')) {
+  while (left.pos < limit && isWord(tokens[left.pos], 'and')) {
     const right = parseNotExpr(tokens, left.pos + 1, limit);
     left = { node: { type: 'and', left: left.node, right: right.node }, pos: right.pos };
   }
@@ -292,41 +406,179 @@ function parseNotExpr(tokens, pos, limit) {
     const inner = parseNotExpr(tokens, pos + 1, limit);
     return { node: { type: 'not', operand: inner.node }, pos: inner.pos };
   }
+  return parseCompareExpr(tokens, pos, limit);
+}
+
+// Reads a comparison operator at pos (single-char punct tokens), or null.
+function readCompareOp(tokens, pos, limit) {
+  if (pos >= limit) return null;
+  const a = tokens[pos];
+  const b = tokens[pos + 1];
+  if (!a || a.t !== 'punct') return null;
+  if (a.v === '=') return isPunct(b, '=') ? { op: '==', next: pos + 2 } : { op: '==', next: pos + 1 };
+  if (a.v === '!' && isPunct(b, '=')) return { op: '!=', next: pos + 2 };
+  if (a.v === '<' && !isPunct(b, '<')) {
+    return isPunct(b, '=') ? { op: '<=', next: pos + 2 } : { op: '<', next: pos + 1 };
+  }
+  if (a.v === '>' && !isPunct(b, '>')) {
+    return isPunct(b, '=') ? { op: '>=', next: pos + 2 } : { op: '>', next: pos + 1 };
+  }
+  return null;
+}
+
+function parseCompareExpr(tokens, pos, limit) {
+  const left = parseBitExpr(tokens, pos, limit);
+  const op = readCompareOp(tokens, left.pos, limit);
+  if (!op) return left;
+  const right = parseBitExpr(tokens, op.next, limit);
+  return { node: { type: 'cmp', op: op.op, left: left.node, right: right.node }, pos: right.pos };
+}
+
+function parseBitExpr(tokens, pos, limit) {
+  let left = parseShiftExpr(tokens, pos, limit);
+  for (;;) {
+    const tok = tokens[left.pos];
+    if (left.pos >= limit || !tok || tok.t !== 'punct' || !['&', '|', '^'].includes(tok.v)) return left;
+    const right = parseShiftExpr(tokens, left.pos + 1, limit);
+    left = { node: { type: 'bin', op: tok.v, left: left.node, right: right.node }, pos: right.pos };
+  }
+}
+
+function parseShiftExpr(tokens, pos, limit) {
+  let left = parseAddExpr(tokens, pos, limit);
+  for (;;) {
+    const a = tokens[left.pos];
+    const b = tokens[left.pos + 1];
+    if (left.pos + 1 >= limit || !a || a.t !== 'punct' || !b || b.t !== 'punct') return left;
+    let op = null;
+    if (a.v === '<' && b.v === '<') op = '<<';
+    else if (a.v === '>' && b.v === '>') op = '>>';
+    if (!op) return left;
+    const right = parseAddExpr(tokens, left.pos + 2, limit);
+    left = { node: { type: 'bin', op, left: left.node, right: right.node }, pos: right.pos };
+  }
+}
+
+function parseAddExpr(tokens, pos, limit) {
+  let left = parseMulExpr(tokens, pos, limit);
+  for (;;) {
+    const tok = tokens[left.pos];
+    if (left.pos >= limit || !tok || tok.t !== 'punct' || (tok.v !== '+' && tok.v !== '-')) return left;
+    const right = parseMulExpr(tokens, left.pos + 1, limit);
+    left = { node: { type: 'bin', op: tok.v, left: left.node, right: right.node }, pos: right.pos };
+  }
+}
+
+function parseMulExpr(tokens, pos, limit) {
+  let left = parseUnaryExpr(tokens, pos, limit);
+  for (;;) {
+    const tok = tokens[left.pos];
+    if (left.pos >= limit || !tok || tok.t !== 'punct' || !['*', '\\', '%'].includes(tok.v)) return left;
+    const right = parseUnaryExpr(tokens, left.pos + 1, limit);
+    left = { node: { type: 'bin', op: tok.v, left: left.node, right: right.node }, pos: right.pos };
+  }
+}
+
+function parseUnaryExpr(tokens, pos, limit) {
+  const tok = tokens[pos];
+  if (pos < limit && tok && tok.t === 'punct' && (tok.v === '-' || tok.v === '~')) {
+    const inner = parseUnaryExpr(tokens, pos + 1, limit);
+    return { node: { type: 'neg', op: tok.v, operand: inner.node }, pos: inner.pos };
+  }
   return parsePrimaryExpr(tokens, pos, limit);
+}
+
+// `of them` | `of ( $a, $b*, $* )` → { ids: null (them) | [{id, prefix}] , pos }
+function parseStringSet(tokens, pos, limit) {
+  if (isWord(tokens[pos], 'them')) return { set: null, pos: pos + 1 };
+  if (!isPunct(tokens[pos], '(')) throw new ParseError('expected "them" or a string set after "of"');
+  const set = [];
+  let p = pos + 1;
+  for (;;) {
+    const tok = tokens[p];
+    if (p >= limit || !tok) throw new ParseError('unterminated string set');
+    if (tok.t === 'var') {
+      if (isPunct(tokens[p + 1], '*')) {
+        set.push({ id: tok.v, prefix: true });
+        p += 2;
+      } else {
+        set.push({ id: tok.v, prefix: false });
+        p += 1;
+      }
+    } else if (isPunct(tok, '$') && isPunct(tokens[p + 1], '*')) {
+      set.push({ id: '', prefix: true });
+      p += 2;
+    } else {
+      throw new ParseError(`unexpected ${describeToken(tok)} in string set`);
+    }
+    if (isPunct(tokens[p], ',')) {
+      p += 1;
+      continue;
+    }
+    if (isPunct(tokens[p], ')')) return { set, pos: p + 1 };
+    throw new ParseError('expected "," or ")" in string set');
+  }
+}
+
+function parseQuantifier(q, tokens, pos, limit) {
+  // pos points at "of"
+  const parsed = parseStringSet(tokens, pos + 1, limit);
+  const next = tokens[parsed.pos];
+  if (isWord(next, 'in') || isWord(next, 'at')) {
+    throw new ParseError(`unsupported construct "of ... ${next.v}"`);
+  }
+  return { node: { type: 'quant', q, set: parsed.set, ids: null }, pos: parsed.pos };
 }
 
 function parsePrimaryExpr(tokens, pos, limit) {
   const tok = tokens[pos];
   if (pos >= limit || !tok) throw new ParseError('condition ended unexpectedly');
 
-  // Parentheses
+  // Parentheses (boolean or numeric)
   if (isPunct(tok, '(')) {
     const inner = parseOrExpr(tokens, pos + 1, limit);
     if (!isPunct(tokens[inner.pos], ')')) throw new ParseError('expected ")" in condition');
     return { node: inner.node, pos: inner.pos + 1 };
   }
 
-  // $a
+  // $a / $a at <expr>
   if (tok.t === 'var') {
-    if (isWord(tokens[pos + 1], 'of')) {
-      throw new ParseError(`unsupported construct "$${tok.v} of ..."`);
+    const next = tokens[pos + 1];
+    if (isWord(next, 'of')) throw new ParseError(`unsupported construct "$${tok.v} of ..."`);
+    if (isWord(next, 'in')) throw new ParseError(`unsupported construct "$${tok.v} in ..."`);
+    if (isWord(next, 'at')) {
+      const off = parseAddExpr(tokens, pos + 2, limit);
+      return { node: { type: 'at', id: tok.v, offset: off.node }, pos: off.pos };
     }
     return { node: { type: 'string', id: tok.v }, pos: pos + 1 };
   }
 
-  // #a == N
-  if (tok.t === 'count') return parseCountExpr(tokens, pos, limit);
+  // #a (match count, numeric)
+  if (tok.t === 'count') {
+    if (isWord(tokens[pos + 1], 'in')) throw new ParseError(`unsupported construct "#${tok.v} in ..."`);
+    return { node: { type: 'count', id: tok.v }, pos: pos + 1 };
+  }
+
+  if (tok.t === 'num') {
+    if (isWord(tokens[pos + 1], 'of')) {
+      return parseQuantifier({ type: 'num', value: tok.v }, tokens, pos + 1, limit);
+    }
+    return { node: { type: 'num', value: tok.v }, pos: pos + 1 };
+  }
 
   if (tok.t === 'word') {
-    // any of them / all of them
-    if (tok.v === 'any' || tok.v === 'all') {
-      if (!isWord(tokens[pos + 1], 'of') || !isWord(tokens[pos + 2], 'them')) {
-        throw new ParseError(`unsupported quantifier (only "any of them" / "all of them")`);
-      }
-      return { node: { type: 'quant', q: tok.v }, pos: pos + 3 };
+    if ((tok.v === 'any' || tok.v === 'all' || tok.v === 'none') && isWord(tokens[pos + 1], 'of')) {
+      return parseQuantifier(tok.v, tokens, pos + 1, limit);
     }
     if (tok.v === 'true' || tok.v === 'false') {
       return { node: { type: 'const', value: tok.v === 'true' }, pos: pos + 1 };
+    }
+    if (tok.v === 'filesize') return { node: { type: 'filesize' }, pos: pos + 1 };
+    const fn = INT_FUNCS.get(tok.v);
+    if (fn && isPunct(tokens[pos + 1], '(')) {
+      const arg = parseBitExpr(tokens, pos + 2, limit);
+      if (!isPunct(tokens[arg.pos], ')')) throw new ParseError(`expected ")" after ${tok.v}(...)`);
+      return { node: { type: 'int', fn, offset: arg.node }, pos: arg.pos + 1 };
     }
     throw new ParseError(`unsupported condition atom "${tok.v}"`);
   }
@@ -334,40 +586,23 @@ function parsePrimaryExpr(tokens, pos, limit) {
   throw new ParseError(`unexpected ${describeToken(tok)} in condition`);
 }
 
-function parseCountExpr(tokens, pos, limit) {
-  const id = tokens[pos].v;
-  const a = tokens[pos + 1];
-  const b = tokens[pos + 2];
-  let op = null;
-  let next = -1;
-
-  if (a && a.t === 'punct') {
-    if (a.v === '=') {
-      op = '==';
-      next = isPunct(b, '=') ? pos + 3 : pos + 2;
-    } else if (a.v === '!' && isPunct(b, '=')) {
-      op = '!=';
-      next = pos + 3;
-    } else if (a.v === '<') {
-      op = isPunct(b, '=') ? '<=' : '<';
-      next = isPunct(b, '=') ? pos + 3 : pos + 2;
-    } else if (a.v === '>') {
-      op = isPunct(b, '=') ? '>=' : '>';
-      next = isPunct(b, '=') ? pos + 3 : pos + 2;
-    }
-  }
-  if (!op) throw new ParseError(`#${id}: expected a comparison operator`);
-
-  const numTok = tokens[next];
-  if (next >= limit || !numTok || numTok.t !== 'num') {
-    throw new ParseError(`#${id}: expected a number after "${op}"`);
-  }
-  return { node: { type: 'count', id, op, value: numTok.v }, pos: next + 1 };
-}
-
 /* ------------------------------------------------------------------ *
  * Rule assembly
  * ------------------------------------------------------------------ */
+
+function skipParenArgs(tokens, pos, to) {
+  if (!isPunct(tokens[pos], '(')) return pos;
+  let depth = 0;
+  while (pos < to) {
+    if (isPunct(tokens[pos], '(')) depth += 1;
+    else if (isPunct(tokens[pos], ')')) {
+      depth -= 1;
+      if (depth === 0) return pos + 1;
+    }
+    pos += 1;
+  }
+  return pos;
+}
 
 function parseStringDecls(tokens, pos, to, rule) {
   const seen = new Set(rule.strings.map((s) => s.id));
@@ -389,37 +624,23 @@ function parseStringDecls(tokens, pos, to, rule) {
       valueTok.t === 'str' ? makeTextPattern(id, valueTok.v) : makeHexPattern(id, valueTok.v);
     pos += 3;
 
-    // Modifiers: nocase is honoured, everything else (wide, ascii, xor(...),
-    // fullword, base64, ...) is tolerated and ignored.
+    // Modifiers: nocase, ascii, wide and fullword are honoured on text strings.
+    // xor/base64/base64wide/private are tolerated and ignored (the plain form
+    // is still searched: fewer detections, never false ones).
     while (pos < to) {
       const mod = tokens[pos];
       if (mod.t !== 'word' || SECTION_WORDS.has(mod.v)) break;
-      if (mod.v.toLowerCase() === 'nocase') {
-        pattern.nocase = true;
-        pos += 1;
+      const name = mod.v.toLowerCase();
+      pos += 1;
+      if (pattern.kind === 'text' && ['nocase', 'ascii', 'wide', 'fullword'].includes(name)) {
+        pattern[name] = true;
         continue;
       }
-      if (mod.v.toLowerCase() === 'xor') {
-        pos += 1;
-        if (isPunct(tokens[pos], '(')) {
-          let depth = 0;
-          while (pos < to) {
-            if (isPunct(tokens[pos], '(')) depth += 1;
-            else if (isPunct(tokens[pos], ')')) {
-              depth -= 1;
-              if (depth === 0) {
-                pos += 1;
-                break;
-              }
-            }
-            pos += 1;
-          }
-        }
-        continue;
-      }
-      pos += 1; // any other (known or unknown) modifier: ignore
+      if (name === 'xor' || name === 'base64' || name === 'base64wide') pos = skipParenArgs(tokens, pos, to);
+      // any other (known or unknown) modifier: ignore
     }
 
+    if (pattern.kind === 'text') finalizeTextPattern(pattern);
     rule.strings.push(pattern);
     seen.add(id);
   }
@@ -462,38 +683,41 @@ function parseSections(tokens, from, to, rule) {
   rule.condition = condition;
 }
 
-function analyzeCondition(node) {
-  const ids = new Set();
-  const countIds = new Set();
-  let usesThem = false;
-
+/** Validates string references and expands quantifier sets to concrete ids. */
+function resolveCondition(rule) {
+  const declared = rule.strings.map((s) => s.id);
+  const declaredSet = new Set(declared);
   const walk = (n) => {
-    if (!n) return;
+    if (!n || typeof n !== 'object') return;
     switch (n.type) {
       case 'string':
-        ids.add(n.id);
-        break;
+      case 'at':
       case 'count':
-        ids.add(n.id);
-        countIds.add(n.id);
+        if (!declaredSet.has(n.id)) throw new ParseError(`rule "${rule.name}": undeclared string $${n.id}`);
+        if (n.offset) walk(n.offset);
         break;
-      case 'quant':
-        usesThem = true;
+      case 'quant': {
+        if (n.set === null) {
+          n.ids = declared.slice();
+        } else {
+          const ids = new Set();
+          for (const item of n.set) {
+            const matches = item.prefix ? declared.filter((d) => d.startsWith(item.id)) : [item.id];
+            if (matches.length === 0 || (!item.prefix && !declaredSet.has(item.id))) {
+              throw new ParseError(`rule "${rule.name}": undeclared string $${item.id}${item.prefix ? '*' : ''}`);
+            }
+            matches.forEach((m) => ids.add(m));
+          }
+          n.ids = Array.from(ids);
+        }
+        if (typeof n.q === 'object') walk(n.q);
         break;
-      case 'not':
-        walk(n.operand);
-        break;
-      case 'and':
-      case 'or':
-        walk(n.left);
-        walk(n.right);
-        break;
+      }
       default:
-        break;
+        for (const k of ['left', 'right', 'operand', 'offset']) if (n[k]) walk(n[k]);
     }
   };
-  walk(node);
-  return { ids, countIds, usesThem };
+  walk(rule.condition);
 }
 
 function findRuleEnd(tokens, from) {
@@ -527,14 +751,7 @@ function parseRule(tokens, start) {
 
   const rule = { name, strings: [], condition: null };
   parseSections(tokens, pos + 1, end, rule);
-  rule.analysis = analyzeCondition(rule.condition);
-
-  // Every referenced $identifier must be declared in the strings section.
-  const declared = new Set(rule.strings.map((s) => s.id));
-  for (const id of rule.analysis.ids) {
-    if (!declared.has(id)) throw new ParseError(`rule "${name}": undeclared string $${id}`);
-  }
-
+  resolveCondition(rule);
   return { rule, end: end + 1 };
 }
 
@@ -585,118 +802,270 @@ function parseYara(text) {
 }
 
 /* ------------------------------------------------------------------ *
- * Matching
+ * Matching (lazy: a string is only searched when the condition needs it,
+ * so cheap checks like `uint16(0) == 0x5A4D` short-circuit whole rules)
  * ------------------------------------------------------------------ */
 
-function countIndexOf(haystack, needle, limit) {
-  if (needle.length === 0 || needle.length > haystack.length) return 0;
-  let count = 0;
-  let start = 0;
-  while (count < limit) {
-    const idx = haystack.indexOf(needle, start);
-    if (idx === -1) break;
-    count += 1;
-    start = idx + needle.length; // non-overlapping occurrences
+function isWordByte(b) {
+  return (b >= 0x30 && b <= 0x39) || (b >= 0x41 && b <= 0x5a) || (b >= 0x61 && b <= 0x7a);
+}
+
+function fullwordOk(hay, idx, len, step) {
+  const before = idx - step;
+  const after = idx + len;
+  if (before >= 0 && isWordByte(hay[before])) return false;
+  if (after < hay.length && isWordByte(hay[after])) return false;
+  return true;
+}
+
+function countText(ctx, pattern, limit) {
+  let total = 0;
+  for (const v of pattern.variants) {
+    const hay = pattern.nocase ? ctx.lower() : ctx.buffer;
+    const needle = pattern.nocase ? v.lowerBytes : v.bytes;
+    if (needle.length > hay.length) continue;
+    let start = 0;
+    while (total < limit) {
+      const idx = hay.indexOf(needle, start);
+      if (idx === -1) break;
+      if (!pattern.fullword || fullwordOk(hay, idx, needle.length, v.step)) {
+        total += 1;
+        start = idx + needle.length; // non-overlapping occurrences
+      } else {
+        start = idx + 1;
+      }
+    }
+    if (total >= limit) break;
   }
+  return total;
+}
+
+function countHex(ctx, pattern, limit) {
+  if (pattern.bytes) {
+    const hay = ctx.buffer;
+    const needle = pattern.bytes;
+    if (needle.length > hay.length) return 0;
+    let count = 0;
+    let start = 0;
+    while (count < limit) {
+      const idx = hay.indexOf(needle, start);
+      if (idx === -1) break;
+      count += 1;
+      start = idx + needle.length;
+    }
+    return count;
+  }
+  const str = ctx.latin1();
+  const re = pattern.regex;
+  re.lastIndex = 0;
+  let count = 0;
+  while (count < limit) {
+    const m = re.exec(str);
+    if (!m) break;
+    count += 1;
+    if (m[0].length === 0) re.lastIndex += 1;
+  }
+  re.lastIndex = 0;
   return count;
 }
 
-function countMasked(haystack, bytes, mask, limit) {
-  const len = bytes.length;
-  if (len === 0 || len > haystack.length) return 0;
-  const last = haystack.length - len;
-  let count = 0;
-  let i = 0;
-  while (i <= last && count < limit) {
-    let j = 0;
-    while (j < len && (haystack[i + j] & mask[j]) === bytes[j]) j += 1;
-    if (j === len) {
-      count += 1;
-      i += len;
-    } else {
-      i += 1;
+function matchAt(ctx, pattern, offset) {
+  if (!Number.isInteger(offset) || offset < 0 || offset >= ctx.headLength) return false;
+  const hay = ctx.buffer;
+  if (pattern.kind === 'text') {
+    const src = pattern.nocase ? ctx.lower() : hay;
+    return pattern.variants.some((v) => {
+      const needle = pattern.nocase ? v.lowerBytes : v.bytes;
+      if (offset + needle.length > hay.length) return false;
+      if (src.compare(needle, 0, needle.length, offset, offset + needle.length) !== 0) return false;
+      return !pattern.fullword || fullwordOk(hay, offset, needle.length, v.step);
+    });
+  }
+  if (pattern.bytes) {
+    const n = pattern.bytes.length;
+    return offset + n <= hay.length && hay.compare(pattern.bytes, 0, n, offset, offset + n) === 0;
+  }
+  const sticky = pattern.sticky || (pattern.sticky = new RegExp(pattern.regex.source, 'y'));
+  sticky.lastIndex = offset;
+  const ok = sticky.test(ctx.latin1());
+  sticky.lastIndex = 0;
+  return ok;
+}
+
+function makeMatchContext(buffer, opts) {
+  const o = opts || {};
+  let lower = null;
+  let latin = null;
+  return {
+    buffer,
+    filesize: Number.isFinite(o.filesize) ? o.filesize : buffer.length,
+    // Bytes at offsets >= headLength are not at their real file offset
+    // (big files are scanned as head + tail): offset-based checks stop there.
+    headLength: Number.isFinite(o.headLength) ? Math.min(o.headLength, buffer.length) : buffer.length,
+    lower: () => lower || (lower = asciiLower(buffer)),
+    latin1: () => latin || (latin = buffer.toString('latin1')),
+    counts: null
+  };
+}
+
+function stringCount(ctx, rule, id, limit) {
+  const cached = ctx.counts.get(id);
+  if (cached && (cached.exact || cached.n >= limit)) return cached.n;
+  const pattern = rule.byId.get(id);
+  const n = pattern.kind === 'text' ? countText(ctx, pattern, limit) : countHex(ctx, pattern, limit);
+  ctx.counts.set(id, { n, exact: n < limit });
+  return n;
+}
+
+function readInt(ctx, fn, offset) {
+  if (!Number.isInteger(offset) || offset < 0 || offset + fn.size > ctx.headLength) return undefined;
+  const b = ctx.buffer;
+  switch (fn.size) {
+    case 1:
+      return fn.signed ? b.readInt8(offset) : b.readUInt8(offset);
+    case 2:
+      if (fn.signed) return fn.be ? b.readInt16BE(offset) : b.readInt16LE(offset);
+      return fn.be ? b.readUInt16BE(offset) : b.readUInt16LE(offset);
+    default:
+      if (fn.signed) return fn.be ? b.readInt32BE(offset) : b.readInt32LE(offset);
+      return fn.be ? b.readUInt32BE(offset) : b.readUInt32LE(offset);
+  }
+}
+
+function truthy(v) {
+  return v === true || (typeof v === 'number' && v !== 0);
+}
+
+function evalBin(op, a, b) {
+  if (typeof a !== 'number' || typeof b !== 'number') return undefined;
+  switch (op) {
+    case '+':
+      return a + b;
+    case '-':
+      return a - b;
+    case '*':
+      return a * b;
+    case '\\':
+      return b === 0 ? undefined : Math.trunc(a / b);
+    case '%':
+      return b === 0 ? undefined : a % b;
+    default: {
+      // Bitwise on 64-bit integers (JS bit ops are 32-bit signed)
+      if (!Number.isInteger(a) || !Number.isInteger(b)) return undefined;
+      const x = BigInt(a);
+      const y = BigInt(b);
+      let r;
+      if (op === '&') r = x & y;
+      else if (op === '|') r = x | y;
+      else if (op === '^') r = x ^ y;
+      else if (op === '<<') r = b >= 64 ? 0n : BigInt.asIntN(64, x << y);
+      else if (op === '>>') r = b >= 64 ? 0n : x >> y;
+      else return undefined;
+      return Number(r);
     }
   }
-  return count;
 }
 
-function countMatches(haystack, pattern, lowerHaystack, limit) {
-  if (pattern.mask) return countMasked(haystack, pattern.bytes, pattern.mask, limit);
-  if (pattern.nocase) {
-    if (!lowerHaystack) return 0;
-    return countIndexOf(lowerHaystack, pattern.lowerBytes, limit);
-  }
-  return countIndexOf(haystack, pattern.bytes, limit);
-}
-
-function compareCount(actual, op, expected) {
-  switch (op) {
-    case '==':
-      return actual === expected;
-    case '!=':
-      return actual !== expected;
-    case '<':
-      return actual < expected;
-    case '<=':
-      return actual <= expected;
-    case '>':
-      return actual > expected;
-    case '>=':
-      return actual >= expected;
-    default:
-      return false;
-  }
-}
-
-function evaluateCondition(node, counts) {
+function evaluateNode(node, ctx, rule) {
   switch (node.type) {
     case 'const':
       return node.value;
+    case 'num':
+      return node.value;
+    case 'filesize':
+      return ctx.filesize;
     case 'string':
-      return (counts.get(node.id) || 0) > 0;
-    case 'not':
-      return !evaluateCondition(node.operand, counts);
-    case 'and':
-      return evaluateCondition(node.left, counts) && evaluateCondition(node.right, counts);
-    case 'or':
-      return evaluateCondition(node.left, counts) || evaluateCondition(node.right, counts);
-    case 'quant': {
-      if (counts.size === 0) return false; // no strings -> never match
-      for (const value of counts.values()) {
-        if (node.q === 'any' && value > 0) return true;
-        if (node.q === 'all' && value === 0) return false;
-      }
-      return node.q === 'all';
-    }
+      return stringCount(ctx, rule, node.id, 1) > 0;
     case 'count':
-      return compareCount(counts.get(node.id) || 0, node.op, node.value);
-    default:
+      return stringCount(ctx, rule, node.id, Infinity);
+    case 'at': {
+      const off = evaluateNode(node.offset, ctx, rule);
+      return typeof off === 'number' && matchAt(ctx, rule.byId.get(node.id), off);
+    }
+    case 'int':
+      return readInt(ctx, node.fn, evaluateNode(node.offset, ctx, rule));
+    case 'neg': {
+      const v = evaluateNode(node.operand, ctx, rule);
+      if (typeof v !== 'number') return undefined;
+      return node.op === '-' ? -v : Number(~BigInt(v));
+    }
+    case 'bin':
+      return evalBin(node.op, evaluateNode(node.left, ctx, rule), evaluateNode(node.right, ctx, rule));
+    case 'cmp': {
+      const a = evaluateNode(node.left, ctx, rule);
+      const b = evaluateNode(node.right, ctx, rule);
+      if (a === undefined || b === undefined) return false;
+      const x = typeof a === 'boolean' ? Number(a) : a;
+      const y = typeof b === 'boolean' ? Number(b) : b;
+      switch (node.op) {
+        case '==':
+          return x === y;
+        case '!=':
+          return x !== y;
+        case '<':
+          return x < y;
+        case '<=':
+          return x <= y;
+        case '>':
+          return x > y;
+        default:
+          return x >= y;
+      }
+    }
+    case 'not': {
+      const v = evaluateNode(node.operand, ctx, rule);
+      return v === undefined ? false : !truthy(v);
+    }
+    case 'and':
+      return truthy(evaluateNode(node.left, ctx, rule)) && truthy(evaluateNode(node.right, ctx, rule));
+    case 'or':
+      return truthy(evaluateNode(node.left, ctx, rule)) || truthy(evaluateNode(node.right, ctx, rule));
+    case 'quant': {
+      const ids = node.ids || [];
+      if (ids.length === 0) return false; // no strings -> never match
+      let need;
+      if (node.q === 'any') need = 1;
+      else if (node.q === 'all') need = ids.length;
+      else if (node.q === 'none') need = 0;
+      else {
+        const v = evaluateNode(node.q, ctx, rule);
+        if (typeof v !== 'number') return false;
+        need = v;
+      }
+      if (node.q === 'none') return ids.every((id) => stringCount(ctx, rule, id, 1) === 0);
+      if (need <= 0) return true;
+      let hits = 0;
+      for (let i = 0; i < ids.length; i += 1) {
+        if (stringCount(ctx, rule, ids[i], 1) > 0) hits += 1;
+        if (hits >= need) return true;
+        if (hits + (ids.length - i - 1) < need) return false;
+      }
       return false;
+    }
+    default:
+      return undefined;
   }
 }
 
-function ruleMatches(rule, buffer) {
-  const analysis = rule.analysis || analyzeCondition(rule.condition);
-
-  // Scan only what the condition needs (all strings when `... of them` is used).
-  const scan = analysis.usesThem ? rule.strings : rule.strings.filter((s) => analysis.ids.has(s.id));
-  const needsLower = scan.some((p) => p.nocase && !p.mask);
-  const lowerBuffer = needsLower ? asciiLower(buffer) : null;
-
-  const counts = new Map(rule.strings.map((s) => [s.id, 0]));
-  for (const pattern of scan) {
-    const limit = analysis.countIds.has(pattern.id) ? Infinity : 1;
-    counts.set(pattern.id, countMatches(buffer, pattern, lowerBuffer, limit));
-  }
-  return evaluateCondition(rule.condition, counts);
+function ruleMatches(rule, ctx) {
+  if (!rule.byId) rule.byId = new Map(rule.strings.map((s) => [s.id, s]));
+  ctx.counts = new Map(); // per-rule string counts (ids are rule-local)
+  return truthy(evaluateNode(rule.condition, ctx, rule));
 }
 
-function matchRules(buffer, rules) {
+/**
+ * @param {Buffer} buffer scan window
+ * @param {Array} rules
+ * @param {{filesize?:number, headLength?:number}} [opts] real file size and
+ *   how many leading bytes sit at their real file offset
+ */
+function matchRules(buffer, rules, opts) {
   if (!Array.isArray(rules) || rules.length === 0 || buffer.length === 0) return null;
+  const ctx = makeMatchContext(buffer, opts);
   for (const rule of rules) {
     if (!rule || !Array.isArray(rule.strings) || !rule.condition) continue;
     try {
-      if (ruleMatches(rule, buffer)) return { name: rule.name, kind: 'yara' };
+      if (ruleMatches(rule, ctx)) return { name: rule.name, kind: 'yara' };
     } catch {
       // A broken compiled rule must never break scanning.
     }
@@ -763,6 +1132,10 @@ function readRangeSync(filePath, start, length) {
   }
 }
 
+function windowInfo(size) {
+  return { filesize: size, headLength: size <= STRING_SCAN_LIMIT ? size : STRING_SCAN_LIMIT };
+}
+
 // Head (2MB) for big files, plus tail (256KB) so recent payloads are covered.
 function readScanWindow(filePath, size) {
   if (size <= STRING_SCAN_LIMIT) return fs.readFileSync(filePath);
@@ -811,6 +1184,14 @@ function load(signaturesDir) {
         }
       }
       result.source.dbFile = dbPath;
+      // Yayınlanan DB, YARA kurallarını da imzalı db.json içinde taşır
+      if (typeof json.yara === 'string' && json.yara) {
+        const embedded = parseYara(json.yara);
+        result.rules.push(...embedded);
+        for (const skipped of embedded.skipped || []) {
+          result.skipped.push({ file: DB_FILE, rule: skipped.rule, error: skipped.error });
+        }
+      }
     }
   } catch (err) {
     if (err && err.code !== 'ENOENT') {
@@ -821,7 +1202,7 @@ function load(signaturesDir) {
   try {
     const text = fs.readFileSync(rulesPath, 'utf8');
     const rules = parseYara(text);
-    result.rules = rules;
+    result.rules = rules.concat(result.rules); // yerel kurallar önce
     result.source.rulesFile = rulesPath;
     for (const skipped of rules.skipped || []) {
       result.skipped.push({ file: RULES_FILE, rule: skipped.rule, error: skipped.error });
@@ -859,7 +1240,7 @@ function checkFile(filePath, db) {
       const shaName = shaLookup(db.sha256, hash);
       if (shaName) return { name: shaName, kind: 'sha256' };
     }
-    return matchRules(readScanWindow(filePath, stat.size), db.rules);
+    return matchRules(readScanWindow(filePath, stat.size), db.rules, windowInfo(stat.size));
   } catch {
     return null; // unreadable/vanished file: nothing to report
   }
@@ -905,7 +1286,7 @@ function checkStrings(filePath, db) {
   try {
     const stat = fs.statSync(filePath);
     if (!stat.isFile()) return null;
-    return matchRules(readScanWindow(filePath, stat.size), db.rules);
+    return matchRules(readScanWindow(filePath, stat.size), db.rules, windowInfo(stat.size));
   } catch {
     return null;
   }

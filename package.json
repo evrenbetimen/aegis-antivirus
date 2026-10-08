@@ -6,10 +6,11 @@
   "scripts": {
     "start": "env -u NODE_OPTIONS electron .",
     "test": "env -u NODE_OPTIONS electron test/e2e-scan.js",
-    "test:unit": "node --test test/signatures.test.js test/archive.test.js test/cache.test.js test/dbupdate.test.js test/validate.test.js",
+    "test:unit": "node --test test/signatures.test.js test/archive.test.js test/cache.test.js test/dbupdate.test.js test/validate.test.js test/yara-engine.test.js test/build-db.test.js test/permissions.test.js test/updater.test.js test/native-bridge.test.js",
     "icon": "env -u NODE_OPTIONS electron scripts/make-icon.js",
     "bench": "env -u NODE_OPTIONS electron test/bench-scan.js",
-    "dist": "electron-builder --mac"
+    "dist": "electron-builder --mac --publish never",
+    "release": "electron-builder --mac --publish always"
   },
   "author": "Aegis Security",
   "license": "MIT",
@@ -21,7 +22,10 @@
     "appId": "com.aegis.antivirus",
     "mac": {
       "category": "public.app-category.security",
-      "target": "dmg",
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "hardenedRuntime": true,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist"
@@ -33,6 +37,15 @@
       "renderer/**/*",
       "signatures/**/*",
       "build/icon.*"
-    ]
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "evrenbetimen",
+      "repo": "aegis-antivirus",
+      "releaseType": "release"
+    }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

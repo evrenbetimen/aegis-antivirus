@@ -9,6 +9,9 @@ const quarantine = require('./src/quarantine');
 const firewall = require('./src/firewall');
 const signatures = require('./src/signatures');
 const dbupdate = require('./src/dbupdate');
+const permissions = require('./src/permissions');
+const { createUpdater } = require('./src/updater');
+const { NativeBridge, writePolicy } = require('./src/native-bridge');
 const { Honeypot } = require('./src/honeypot');
 const { Scheduler } = require('./src/scheduler');
 
@@ -27,6 +30,8 @@ let scheduler = null;
 function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 }
+
+const updater = createUpdater({ app, getSettings: () => store.getSettings(), send: (s) => send('update:status', s) });
 
 function notify(title, body) {
   const settings = store.getSettings();
@@ -107,6 +112,58 @@ function addEvent(ev) {
   const saved = store.addEvent(ev);
   send('event:new', Object.assign({ ts: Date.now() }, ev));
   return saved;
+}
+
+/* ---------------- Native sistem genişletmeleri (native-daemon/) ---------------- */
+
+let nativeBridge = null;
+const flowSeen = new Map(); // host → son kayıt zamanı (olay seli önleme)
+
+function onNativeEvent(ev) {
+  if (ev.source === 'shield' && ev.verdict === 'deny') {
+    const name = ev.threat || ev.reason || 'blocked';
+    addEvent({
+      type: 'threat',
+      i18n: { key: 'event.shieldBlocked', vars: { name } },
+      title: 'Kalkan engelledi: ' + name,
+      detail: ev.path
+    });
+    notify('Aegis kalkanı bir uygulamayı engelledi', `${name}\n${ev.path}`);
+  } else if (ev.source === 'firewall') {
+    const key = ev.host || ev.rule;
+    const now = Date.now();
+    if (now - (flowSeen.get(key) || 0) < 60 * 1000) return;
+    flowSeen.set(key, now);
+    if (flowSeen.size > 500) flowSeen.clear();
+    addEvent({
+      type: 'info',
+      i18n: { key: 'event.flowBlocked', vars: { host: ev.host || '?' } },
+      title: 'Bağlantı engellendi: ' + (ev.host || '?'),
+      detail: ev.rule ? `kural ${ev.rule}` : ''
+    });
+  }
+}
+
+function applyShieldPolicy(settings) {
+  try {
+    writePolicy(app.getPath('userData'), settings);
+  } catch (err) {
+    console.warn('[native] kalkan politikası yazılamadı:', err && err.message);
+  }
+}
+
+function startNativeBridge() {
+  if (process.platform !== 'darwin') return;
+  const socketPath = path.join(app.getPath('userData'), 'aegis.sock');
+  if (Buffer.byteLength(socketPath) > 103) {
+    console.warn('[native] socket yolu çok uzun, köprü başlatılmadı:', socketPath);
+    return;
+  }
+  nativeBridge = new NativeBridge({ socketPath, onEvent: onNativeEvent });
+  nativeBridge.start().catch((err) => {
+    console.warn('[native] köprü başlatılamadı:', err && err.message);
+    nativeBridge = null;
+  });
 }
 
 function applyHoneypot(settings) {
@@ -329,7 +386,7 @@ ipcMain.handle('db:info', async () => {
   }
 });
 
-ipcMain.handle('db:update', async () => {
+async function runDbUpdate() {
   const settings = store.getSettings();
   if (!settings.dbUrl) return { ok: false, reason: 'Güncelleme adresi ayarlanmamış (Ayarlar → İmza veritabanı)' };
   const res = await dbupdate.update({ url: settings.dbUrl, dir: SIGNATURES_DIR, publicKey: DB_PUBLIC_KEY });
@@ -342,7 +399,28 @@ ipcMain.handle('db:update', async () => {
     });
   }
   return res;
-});
+}
+
+ipcMain.handle('db:update', () => runDbUpdate());
+
+// Otomatik imza güncellemesi: açılıştan kısa süre sonra, sonra her 6 saatte bir
+const DB_AUTO_UPDATE_MS = 6 * 60 * 60 * 1000;
+let dbUpdateTimer = null;
+function scheduleDbAutoUpdate() {
+  const tick = async () => {
+    const settings = store.getSettings();
+    if (!settings.dbAutoUpdate || !settings.dbUrl) return;
+    try {
+      const res = await runDbUpdate();
+      if (!res.ok) console.warn('[signatures] otomatik güncelleme başarısız:', res.reason);
+    } catch (err) {
+      console.warn('[signatures] otomatik güncelleme hatası:', err);
+    }
+  };
+  setTimeout(tick, 20 * 1000).unref();
+  dbUpdateTimer = setInterval(tick, DB_AUTO_UPDATE_MS);
+  dbUpdateTimer.unref();
+}
 
 ipcMain.handle('db:verify', () => dbupdate.verifyLocal(SIGNATURES_DIR, DB_PUBLIC_KEY, BUNDLED_SIGNATURES_DIR));
 
@@ -353,6 +431,7 @@ ipcMain.handle('settings:set', (_e, patch) => {
   const s = store.updateSettings(patch);
   applyHoneypot(s);
   applyScheduler(s);
+  applyShieldPolicy(s);
   return s;
 });
 ipcMain.handle('stats:get', () => store.getStats());
@@ -360,8 +439,14 @@ ipcMain.handle('events:get', () => store.getEvents());
 ipcMain.handle('runtime:get', () => ({
   honeypot: honeypot ? honeypot.status() : { running: false },
   scheduler: scheduler ? scheduler.status() : { enabled: false },
+  native: nativeBridge ? nativeBridge.status() : { listening: false, connected: false },
   scanning: scanner.isScanning()
 }));
+
+ipcMain.handle('update:status', () => updater.status());
+ipcMain.handle('update:check', () => updater.check());
+ipcMain.handle('update:install', () => updater.install());
+ipcMain.handle('perm:fda', () => permissions.fullDiskAccessStatus());
 
 ipcMain.handle('shell:openPath', (_e, p) => shell.showItemInFolder(p));
 ipcMain.handle('shell:openExternal', (_e, url) => {
@@ -387,7 +472,11 @@ app.whenReady().then(() => {
     if (orphans > 0) console.log(`[quarantine] ${orphans} orfan karantina artığı temizlendi`);
   } catch {}
   createWindow();
+  scheduleDbAutoUpdate();
+  updater.schedule();
   const settings = store.getSettings();
+  applyShieldPolicy(settings);
+  startNativeBridge();
   applyHoneypot(settings);
   applyScheduler(settings);
   app.on('activate', () => {
@@ -402,6 +491,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
+  if (nativeBridge) nativeBridge.stop();
   if (honeypot) honeypot.stop();
   if (scheduler) scheduler.stop();
 });

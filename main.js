@@ -9,6 +9,7 @@ const quarantine = require('./src/quarantine');
 const firewall = require('./src/firewall');
 const signatures = require('./src/signatures');
 const dbupdate = require('./src/dbupdate');
+const permissions = require('./src/permissions');
 const { Honeypot } = require('./src/honeypot');
 const { Scheduler } = require('./src/scheduler');
 
@@ -383,6 +384,8 @@ ipcMain.handle('runtime:get', () => ({
   scheduler: scheduler ? scheduler.status() : { enabled: false },
   scanning: scanner.isScanning()
 }));
+
+ipcMain.handle('perm:fda', () => permissions.fullDiskAccessStatus());
 
 ipcMain.handle('shell:openPath', (_e, p) => shell.showItemInFolder(p));
 ipcMain.handle('shell:openExternal', (_e, url) => {

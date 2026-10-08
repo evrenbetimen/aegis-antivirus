@@ -12,7 +12,8 @@ const SETTING_TYPES = {
   realtimeEnabled: 'boolean',
   scheduledScan: 'boolean',
   honeypotEnabled: 'boolean',
-  dbAutoUpdate: 'boolean'
+  dbAutoUpdate: 'boolean',
+  fdaOnboardingDone: 'boolean'
 };
 
 const MAX_EXCLUSIONS = 200;

@@ -98,7 +98,15 @@ const DYN = {
     'time.h': '{n} h ago',
     'time.d': '{n} d ago',
     'runtime.pending': 'native daemon pending',
-    'runtime.active': 'active'
+    'runtime.active': 'active',
+    'fda.granted': '✓ Tam Disk Erişimi verildi',
+    'fda.denied': 'Tam Disk Erişimi henüz verilmedi',
+    'fda.unknown': 'Tam Disk Erişimi durumu belirlenemedi'
+  },
+  en: {
+    'fda.granted': '✓ Full Disk Access granted',
+    'fda.denied': 'Full Disk Access not granted yet',
+    'fda.unknown': 'Full Disk Access status could not be determined'
   }
 };
 
@@ -891,6 +899,54 @@ $('#btn-tcc').addEventListener('click', () => {
   window.api.openExternal(TCC_URL);
 });
 
+let fdaStatus = 'unsupported';
+
+function paintFda(el, status) {
+  if (!el) return;
+  el.classList.toggle('ok', status === 'granted');
+  el.classList.toggle('bad', status === 'denied');
+  el.textContent = status === 'unsupported' ? '' : d('fda.' + status);
+}
+
+async function refreshFda() {
+  try {
+    fdaStatus = (await window.api.fdaStatus()).status;
+  } catch {
+    fdaStatus = 'unknown';
+  }
+  paintFda($('#tcc-status'), fdaStatus);
+  paintFda($('#fda-state'), $('#fda-modal').hidden ? 'unsupported' : fdaStatus);
+  return fdaStatus;
+}
+
+async function closeFdaModal() {
+  $('#fda-modal').hidden = true;
+  await window.api.setSettings({ fdaOnboardingDone: true });
+  settings = await window.api.getSettings();
+}
+
+$('#fda-open').addEventListener('click', () => window.api.openExternal(TCC_URL));
+$('#fda-later').addEventListener('click', closeFdaModal);
+$('#fda-recheck').addEventListener('click', async () => {
+  if ((await refreshFda()) === 'granted') setTimeout(closeFdaModal, 1200);
+});
+// Kullanıcı Sistem Ayarları'ndan dönünce durumu yenile
+window.addEventListener('focus', async () => {
+  if (fdaStatus === 'unsupported') return;
+  const before = fdaStatus;
+  const now = await refreshFda();
+  if (!$('#fda-modal').hidden && now === 'granted' && before !== 'granted') setTimeout(closeFdaModal, 1200);
+});
+
+// İlk açılış: izin yoksa ve tanıtım daha önce kapatılmadıysa göster
+async function maybeShowFdaOnboarding() {
+  const status = await refreshFda();
+  if (status === 'denied' && settings && !settings.fdaOnboardingDone) {
+    $('#fda-modal').hidden = false;
+    paintFda($('#fda-state'), status);
+  }
+}
+
 /* ---------- Başlangıç ---------- */
 (async function init() {
   try {
@@ -902,6 +958,7 @@ $('#btn-tcc').addEventListener('click', () => {
     await loadHistory();
     await loadRules();
     await refreshDbStatus();
+    await maybeShowFdaOnboarding();
     const m = (location.hash || '').match(/^#(\w+)$/);
     if (m && TITLES[m[1]]) goto(m[1]);
     window.__aegis.ready = true;

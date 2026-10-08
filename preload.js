@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('api', {
   getStats: () => ipcRenderer.invoke('stats:get'),
   getEvents: () => ipcRenderer.invoke('events:get'),
   getRuntime: () => ipcRenderer.invoke('runtime:get'),
+  fdaStatus: () => ipcRenderer.invoke('perm:fda'),
   openPath: (p) => ipcRenderer.invoke('shell:openPath', p),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 

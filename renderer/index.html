@@ -469,6 +469,7 @@
                   </div>
                   <button class="btn ghost sm" id="btn-tcc" data-i18n="set.tcc.open">Sistem Ayarları'nı aç</button>
                 </div>
+                <div class="muted tcc-status" id="tcc-status"></div>
               </div>
             </div>
 
@@ -499,6 +500,23 @@
 
       </div>
     </main>
+  </div>
+  <div class="modal-overlay" id="fda-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="fda-title">
+      <h3 id="fda-title" data-i18n="fda.title">Tam Disk Erişimi verin</h3>
+      <p class="muted" data-i18n="fda.body">macOS, Mail, Safari, Mesajlar ve diğer korumalı klasörleri izniniz olmadan okumamıza izin vermiyor. Aegis bu klasörleri tarayamazsa içlerindeki tehditleri de bulamaz.</p>
+      <ol class="fda-steps">
+        <li data-i18n="fda.step1">"Sistem Ayarları'nı aç" düğmesine basın.</li>
+        <li data-i18n="fda.step2">Listede Aegis'i bulup anahtarını açın. Listede yoksa + ile Uygulamalar klasöründen ekleyin.</li>
+        <li data-i18n="fda.step3">macOS "Çık ve Yeniden Aç" derse onaylayın. Aegis yeniden açıldığında izin etkin olur.</li>
+      </ol>
+      <div class="fda-state" id="fda-state"></div>
+      <div class="modal-actions">
+        <button class="btn ghost sm" id="fda-later" data-i18n="fda.later">Daha sonra</button>
+        <button class="btn ghost sm" id="fda-recheck" data-i18n="fda.recheck">Tekrar kontrol et</button>
+        <button class="btn primary sm" id="fda-open" data-i18n="set.tcc.open">Sistem Ayarları'nı aç</button>
+      </div>
+    </div>
   </div>
   <script src="i18n.js"></script>
   <script src="app.js"></script>

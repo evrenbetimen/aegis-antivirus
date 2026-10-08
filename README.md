@@ -17,7 +17,9 @@ npm test         # uçtan uca test (tarama + karantina + firewall + yeni modüll
 Modül testleri (electron gerektirmez):
 
 ```bash
-node --test test/signatures.test.js   # imza DB + mini YARA motoru
+node --test test/signatures.test.js   # imza DB + YARA motoru
+node --test test/yara-engine.test.js  # genişletilmiş YARA yapıları
+node --test test/build-db.test.js     # imza DB üretim hattı
 node --test test/archive.test.js      # arşiv tarama (zip/tar/gz)
 node --test test/cache.test.js        # hash önbelleği
 node --test test/dbupdate.test.js     # imza DB güncelleme (Ed25519, yönlendirme, dizin)
@@ -48,9 +50,17 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
 ### Çalışır durumda (Evre 1)
 
 - **Tarama motoru**
-  - SHA-256 imza veritabanı (`signatures/db.json`) + **mini YARA motoru**
-    (`signatures/rules.yar`): metin/hex dizgiler, `nocase`, `any/all of them`,
-    `and/or/not`, `#a == N` — parse hatalarında kural atlanır, asla çökmez
+  - SHA-256 imza veritabanı (`signatures/db.json`) + **YARA motoru**
+    (`signatures/rules.yar` + yayındaki gömülü kurallar): metin dizgiler
+    (`nocase/ascii/wide/fullword`), hex (`??`, `A?`, `~XX`, `[n-m]` atlama,
+    `( AA | BB )`), `uint16(0) == 0x5A4D`, `filesize`, `$a at N`, aritmetik,
+    `N of ($x*)`. Desteklenmeyen yapı (pe/elf modülleri, regex, `for`, `in`)
+    içeren kural **atlanır**, asla yanlış değerlendirilmez
+  - **Gerçek imza beslemesi**: saatlik GitHub Actions (`signatures.yml`) —
+    MalwareBazaar (abuse.ch, CC0) son örnek hash'leri (kayan pencere, 100k) +
+    ReversingLabs YARA kuralları (MIT; motorun desteklediği ~290 kural) →
+    imzalı `db.json` → `signatures` sürümü. Uygulama varsayılan olarak bunu
+    6 saatte bir indirir (Ayarlar → Otomatik güncelle)
   - EICAR test dosyası (kodda ham metin yok — AV yarışı için)
   - Sezgisel kurallar: çift uzantı, indirilen Windows binary'leri,
     LaunchAgent kalıcılığı
@@ -161,9 +171,10 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
    hazır; **Developer ID sertifikası** şart (yoksa macOS "hasarlı" uyarısı)
 5. **Tam Disk Erişimi (TCC)** — UI'da rehber butonu var; ilk kurulumda akış
    olarak istenmeli (Ayarlar → Gizlilik ve Güvenlik)
-6. **Gerçek imza istihbaratı** — şu an demo hash + örnek YARA kuralları;
-   gerçek tehdit beslemesi (ör. açık imza kaynakları) gerekiyor; Ed25519
-   imzalı yayın altyapısı hazır (yayıncı anahtarı üretilip paketlenmeli)
+6. **Gerçek imza istihbaratı** — saatlik besleme hazır (`signatures.yml`);
+   çalışması için depo sırrı `DB_SIGNING_KEY` (özel anahtar) gerekir. Depo
+   gizliyse yayın herkese açık ayrı depoya yapılmalı (`vars.SIGNATURES_REPO`
+   + `SIGNATURES_TOKEN`). Authenticode sertifika kuralları (pe modülü) henüz yok
 7. **Otomatik uygulama güncellemesi** — `electron-updater` entegrasyonu
 8. **Uygulama kapanınca da çalışan zamanlanmış tarama** — launchd plist
    iskeleti (README: `native-daemon/` içinde)

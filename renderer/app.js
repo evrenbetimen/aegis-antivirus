@@ -758,6 +758,7 @@ async function loadSettings() {
   $('#set-scheduled').checked = !!settings.scheduledScan;
   $('#set-interval').value = settings.scanIntervalHours || 24;
   $('#set-db-url').value = settings.dbUrl || '';
+  $('#set-db-auto').checked = !!settings.dbAutoUpdate;
   $('#set-language').value = settings.language || 'tr';
   updateFirewallUi();
   renderExclusions();
@@ -779,6 +780,7 @@ bind('#set-firewall', 'firewallEnabled');
 bind('#set-archives', 'scanArchives');
 bind('#set-honeypot', 'honeypotEnabled');
 bind('#set-scheduled', 'scheduledScan');
+bind('#set-db-auto', 'dbAutoUpdate');
 
 $('#set-interval').addEventListener('change', async (e) => {
   const v = Math.max(1, Math.min(168, Number(e.target.value) || 24));
@@ -866,7 +868,7 @@ $('#btn-db-update').addEventListener('click', async () => {
   btn.disabled = true;
   await refreshDbStatus(d('db.checking'));
   const res = await window.api.dbUpdate();
-  await refreshDbStatus();
+  await refreshDbStatus(res.ok ? null : t('db.error', { reason: res.reason || '—' }));
   if (res.ok && res.changed) {
     window.api.getEvents && loadEvents();
   }

@@ -216,6 +216,8 @@ const DICT = {
     'set.dbUpdate': 'Signature database',
     'set.dbUpdate.check': 'Check for updates',
     'set.dbUpdate.updating': 'Checking…',
+    'set.dbAuto': 'Automatic updates',
+    'set.dbAuto.sub': 'Download the signed database every 6 hours (publisher signature verified)',
     'set.tcc': 'Full Disk Access',
     'set.tcc.sub': 'For scanning all folders, grant Aegis Full Disk Access in System Settings → Privacy & Security.',
     'set.tcc.open': 'Open System Settings',

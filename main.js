@@ -329,7 +329,7 @@ ipcMain.handle('db:info', async () => {
   }
 });
 
-ipcMain.handle('db:update', async () => {
+async function runDbUpdate() {
   const settings = store.getSettings();
   if (!settings.dbUrl) return { ok: false, reason: 'Güncelleme adresi ayarlanmamış (Ayarlar → İmza veritabanı)' };
   const res = await dbupdate.update({ url: settings.dbUrl, dir: SIGNATURES_DIR, publicKey: DB_PUBLIC_KEY });
@@ -342,7 +342,28 @@ ipcMain.handle('db:update', async () => {
     });
   }
   return res;
-});
+}
+
+ipcMain.handle('db:update', () => runDbUpdate());
+
+// Otomatik imza güncellemesi: açılıştan kısa süre sonra, sonra her 6 saatte bir
+const DB_AUTO_UPDATE_MS = 6 * 60 * 60 * 1000;
+let dbUpdateTimer = null;
+function scheduleDbAutoUpdate() {
+  const tick = async () => {
+    const settings = store.getSettings();
+    if (!settings.dbAutoUpdate || !settings.dbUrl) return;
+    try {
+      const res = await runDbUpdate();
+      if (!res.ok) console.warn('[signatures] otomatik güncelleme başarısız:', res.reason);
+    } catch (err) {
+      console.warn('[signatures] otomatik güncelleme hatası:', err);
+    }
+  };
+  setTimeout(tick, 20 * 1000).unref();
+  dbUpdateTimer = setInterval(tick, DB_AUTO_UPDATE_MS);
+  dbUpdateTimer.unref();
+}
 
 ipcMain.handle('db:verify', () => dbupdate.verifyLocal(SIGNATURES_DIR, DB_PUBLIC_KEY, BUNDLED_SIGNATURES_DIR));
 
@@ -387,6 +408,7 @@ app.whenReady().then(() => {
     if (orphans > 0) console.log(`[quarantine] ${orphans} orfan karantina artığı temizlendi`);
   } catch {}
   createWindow();
+  scheduleDbAutoUpdate();
   const settings = store.getSettings();
   applyHoneypot(settings);
   applyScheduler(settings);

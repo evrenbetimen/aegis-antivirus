@@ -6,7 +6,7 @@
   "scripts": {
     "start": "env -u NODE_OPTIONS electron .",
     "test": "env -u NODE_OPTIONS electron test/e2e-scan.js",
-    "test:unit": "node --test test/signatures.test.js test/archive.test.js test/cache.test.js test/dbupdate.test.js test/validate.test.js",
+    "test:unit": "node --test test/signatures.test.js test/archive.test.js test/cache.test.js test/dbupdate.test.js test/validate.test.js test/yara-engine.test.js test/build-db.test.js",
     "icon": "env -u NODE_OPTIONS electron scripts/make-icon.js",
     "bench": "env -u NODE_OPTIONS electron test/bench-scan.js",
     "dist": "electron-builder --mac"

@@ -1,11 +1,13 @@
 // Aegis demo signature rules (YARA subset supported by src/signatures.js).
 // Turkish or English comments are both fine. // Türkçe yorum da serbesttir.
 /*
- * Supported: text strings ("..." with optional nocase), hex strings
- * ({ AA BB ?? CC }), conditions: $a, $a and $b, $a or $b, not $a,
- * parentheses, any of them, all of them, #a == N.
- * Unsupported modifiers/keywords (wide, ascii, xor, meta, include, ...)
- * are tolerated and ignored.
+ * Supported: text strings ("..." with nocase, ascii, wide, fullword), hex
+ * strings ({ AA ?? A? [2-4] ( BB | CC ) ~DD }), conditions: and/or/not,
+ * parentheses, $a, $a at N, #a, filesize (KB/MB), uint8/16/32[be](N),
+ * arithmetic/bitwise operators, comparisons, any/all/none/N of them|($a*).
+ * Rules using modules (pe, elf, math...), regex strings, `in`, `for` or rule
+ * references are skipped (never mis-evaluated). xor/base64 modifiers are
+ * tolerated: the plain string is searched.
  */
 
 rule Ad_Ortasi {

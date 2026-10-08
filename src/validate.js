@@ -13,7 +13,8 @@ const SETTING_TYPES = {
   scheduledScan: 'boolean',
   honeypotEnabled: 'boolean',
   dbAutoUpdate: 'boolean',
-  fdaOnboardingDone: 'boolean'
+  fdaOnboardingDone: 'boolean',
+  appAutoUpdate: 'boolean'
 };
 
 const MAX_EXCLUSIONS = 200;

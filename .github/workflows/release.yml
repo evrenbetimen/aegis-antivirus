@@ -1,0 +1,111 @@
+name: Release app
+
+# v* etiketi push edilince macOS uygulamasını derler, Developer ID ile imzalar,
+# Apple'a notarize ettirir ve GitHub Release'e yükler. Yüklenen
+# latest-mac.yml + .zip dosyaları uygulamanın otomatik güncellemesini besler.
+#
+# Gerekli secret'lar (Settings → Secrets and variables → Actions):
+#   CSC_LINK                     Developer ID Application sertifikası (.p12, base64)
+#   CSC_KEY_PASSWORD             .p12 parolası
+#   APPLE_ID                     Apple Developer hesabının e-postası
+#   APPLE_APP_SPECIFIC_PASSWORD  appleid.apple.com → Uygulamaya özel parola
+#   APPLE_TEAM_ID                10 karakterlik Team ID
+# İsteğe bağlı:
+#   RELEASES_TOKEN (secret) + RELEASES_REPO (variable, "sahip/repo")
+#     Sürümleri ayrı, herkese açık bir repoya yayınlamak için.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      unsigned:
+        description: 'İmzasız test derlemesi (yayınlamaz, yalnızca artifact)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Check tag matches package.json version
+        if: github.event_name == 'push'
+        run: |
+          want="v$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "$want" ]; then
+            echo "::error::Etiket $GITHUB_REF_NAME, package.json sürümü $want ile eşleşmiyor"
+            exit 1
+          fi
+
+      - name: Check signing secrets
+        if: github.event_name == 'push' || !inputs.unsigned
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=""
+          for v in CSC_LINK APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Eksik secret:$missing. İmzasız uygulama otomatik güncelleme kuramaz ve Gatekeeper tarafından engellenir."
+            exit 1
+          fi
+
+      - name: Build, sign, notarize and publish
+        if: github.event_name == 'push' || !inputs.unsigned
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN || github.token }}
+          RELEASES_REPO: ${{ vars.RELEASES_REPO }}
+        run: |
+          extra=()
+          if [ -n "$RELEASES_REPO" ]; then
+            extra+=("-c.publish.owner=${RELEASES_REPO%%/*}" "-c.publish.repo=${RELEASES_REPO#*/}")
+          fi
+          npx electron-builder --mac --arm64 --x64 --publish always "${extra[@]}"
+
+      - name: Verify signature and notarization
+        if: github.event_name == 'push' || !inputs.unsigned
+        run: |
+          app=$(ls -d dist/mac-arm64/*.app | head -1)
+          codesign --verify --deep --strict --verbose=2 "$app"
+          spctl --assess --type execute --verbose "$app"
+          xcrun stapler validate "$app"
+
+      - name: Unsigned test build
+        if: github.event_name == 'workflow_dispatch' && inputs.unsigned
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --mac --arm64 --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aegis-mac
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/latest-mac.yml
+          if-no-files-found: warn

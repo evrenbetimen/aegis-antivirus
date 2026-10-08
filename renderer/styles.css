@@ -520,3 +520,5 @@ code { background: rgba(148, 163, 184, 0.12); padding: 1px 6px; border-radius: 6
 .tcc-status { margin-top: 8px; font-size: 12.5px; }
 .tcc-status.ok { color: var(--green); }
 .tcc-status.bad { color: var(--amber); }
+.btn-row { display: flex; gap: 8px; white-space: nowrap; }
+.btn-row [hidden] { display: none; }

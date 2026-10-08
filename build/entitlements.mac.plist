@@ -7,12 +7,12 @@
   <true/>
   <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
   <true/>
-  <!-- Network Extension (firewall) — Apple yetkisi gerektirir -->
-  <key>com.apple.developer.networkextension.network-filter</key>
-  <true/>
-  <!-- Endpoint Security (gerçek zamanlı kalkan) — Apple onayı gerektirir -->
-  <key>com.apple.developer.endpoint-security.client</key>
-  <true/>
+  <!--
+    Endpoint Security ve Network Extension yetkileri burada YOK: bunlar
+    provisioning profile gerektiren kısıtlı yetkilerdir ve profilsiz imzalanan
+    bir uygulama macOS tarafından açılışta öldürülür. Bu yetkiler yalnızca
+    native-daemon/ altındaki sistem genişletmelerine aittir.
+  -->
   <key>com.apple.security.files.user-selected.read-write</key>
   <true/>
 </dict>

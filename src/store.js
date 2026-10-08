@@ -24,6 +24,7 @@ const DEFAULTS = {
     scanIntervalHours: 24,
     honeypotEnabled: true, // fidye yem dosyaları
     dbAutoUpdate: true,
+    appAutoUpdate: true, // uygulama güncellemelerini indir, çıkışta kur
     fdaOnboardingDone: false, // ilk açılış Tam Disk Erişimi tanıtımı gösterildi mi
     dbUrl: DEFAULT_DB_URL // imza DB güncelleme adresi
   },

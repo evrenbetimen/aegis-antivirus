@@ -141,6 +141,8 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
 | Zamanlayıcı | `src/scheduler.js` |
 | İmza DB güncelleme | `src/dbupdate.js` |
 | Ayar/istatistik deposu | `src/store.js` |
+| Tam Disk Erişimi denetimi | `src/permissions.js` |
+| Uygulama güncellemesi | `src/updater.js` |
 
 ## Test
 
@@ -167,15 +169,26 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
 
 ### 🟡 Dağıtım öncesi (sertifika / kullanıcı izni)
 
-4. **Kod imzası + notarization** — `electron-builder` + `build/entitlements.mac.plist`
-   hazır; **Developer ID sertifikası** şart (yoksa macOS "hasarlı" uyarısı)
-5. **Tam Disk Erişimi (TCC)** — UI'da rehber butonu var; ilk kurulumda akış
-   olarak istenmeli (Ayarlar → Gizlilik ve Güvenlik)
+4. **Kod imzası + notarization** — `.github/workflows/release.yml` hazır:
+   `v*` etiketi push edilince macOS'ta derler, Developer ID ile imzalar,
+   notarize eder ve GitHub Release'e yükler. Gerekli secret'lar: `CSC_LINK`
+   (.p12, base64), `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`,
+   `APPLE_TEAM_ID`. Kısıtlı ES/NE yetkileri uygulama entitlements'ından
+   çıkarıldı (profilsiz imzalanmış uygulama açılışta öldürülür); bunlar
+   yalnızca `native-daemon/` sistem genişletmelerine ait
+5. ✅ **Tam Disk Erişimi (TCC)** — ilk açılışta izin yoksa rehber penceresi
+   çıkar; Sistem Ayarları'ndan dönünce durum otomatik yenilenir, Ayarlar'da
+   güncel durum görünür (`src/permissions.js`)
 6. **Gerçek imza istihbaratı** — saatlik besleme hazır (`signatures.yml`);
    çalışması için depo sırrı `DB_SIGNING_KEY` (özel anahtar) gerekir. Depo
    gizliyse yayın herkese açık ayrı depoya yapılmalı (`vars.SIGNATURES_REPO`
    + `SIGNATURES_TOKEN`). Authenticode sertifika kuralları (pe modülü) henüz yok
-7. **Otomatik uygulama güncellemesi** — `electron-updater` entegrasyonu
+7. ✅ **Otomatik uygulama güncellemesi** — `electron-updater` (`src/updater.js`):
+   imzalı macOS sürümünde 30 sn sonra ve 6 saatte bir denetler, arka planda
+   indirir, çıkışta kurar (Ayarlar → Uygulama güncellemeleri). Güncellemeler
+   `release.yml`'ın yüklediği `latest-mac.yml` + `.zip`'ten gelir; depo
+   gizliyse sürümler `vars.RELEASES_REPO` + `RELEASES_TOKEN` ile herkese açık
+   ayrı bir depoya yayınlanmalı
 8. **Uygulama kapanınca da çalışan zamanlanmış tarama** — launchd plist
    iskeleti (README: `native-daemon/` içinde)
 

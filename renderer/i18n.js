@@ -221,6 +221,10 @@ const DICT = {
     'set.tcc': 'Full Disk Access',
     'set.tcc.sub': 'For scanning all folders, grant Aegis Full Disk Access in System Settings → Privacy & Security.',
     'set.tcc.open': 'Open System Settings',
+    'set.appUpdate': 'App updates',
+    'set.appUpdate.install': 'Restart and install',
+    'set.appAuto': 'Automatic updates',
+    'set.appAuto.sub': 'Download new versions in the background and install them when you quit',
     'fda.title': 'Grant Full Disk Access',
     'fda.body': 'macOS does not let us read Mail, Safari, Messages and other protected folders without your permission. If Aegis cannot scan them, it cannot find threats inside them.',
     'fda.step1': 'Click "Open System Settings".',
@@ -238,7 +242,6 @@ const DICT = {
     'set.ruleFirewall': 'Rule-based firewall: active',
     'set.realtimePending': 'Real-time shield: pending Apple approval (native-daemon/)',
     'set.packetBlockPending': 'Packet blocking: pending Apple approval (native-daemon/)',
-    'set.version': 'Version 0.1.0 · Signature DB',
 
     // Ortak
     'common.close': 'Close',

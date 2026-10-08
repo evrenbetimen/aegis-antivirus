@@ -10,6 +10,7 @@ const firewall = require('./src/firewall');
 const signatures = require('./src/signatures');
 const dbupdate = require('./src/dbupdate');
 const permissions = require('./src/permissions');
+const { createUpdater } = require('./src/updater');
 const { Honeypot } = require('./src/honeypot');
 const { Scheduler } = require('./src/scheduler');
 
@@ -28,6 +29,8 @@ let scheduler = null;
 function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 }
+
+const updater = createUpdater({ app, getSettings: () => store.getSettings(), send: (s) => send('update:status', s) });
 
 function notify(title, body) {
   const settings = store.getSettings();
@@ -385,6 +388,9 @@ ipcMain.handle('runtime:get', () => ({
   scanning: scanner.isScanning()
 }));
 
+ipcMain.handle('update:status', () => updater.status());
+ipcMain.handle('update:check', () => updater.check());
+ipcMain.handle('update:install', () => updater.install());
 ipcMain.handle('perm:fda', () => permissions.fullDiskAccessStatus());
 
 ipcMain.handle('shell:openPath', (_e, p) => shell.showItemInFolder(p));
@@ -412,6 +418,7 @@ app.whenReady().then(() => {
   } catch {}
   createWindow();
   scheduleDbAutoUpdate();
+  updater.schedule();
   const settings = store.getSettings();
   applyHoneypot(settings);
   applyScheduler(settings);

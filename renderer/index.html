@@ -464,6 +464,23 @@
               <div class="sub-block">
                 <div class="setting-inline">
                   <div>
+                    <strong data-i18n="set.appUpdate">Uygulama güncellemeleri</strong>
+                    <span class="muted" id="app-update-status">—</span>
+                  </div>
+                  <div class="btn-row">
+                    <button class="btn primary sm" id="btn-app-install" hidden data-i18n="set.appUpdate.install">Yeniden başlat ve kur</button>
+                    <button class="btn ghost sm" id="btn-app-update" data-i18n="set.dbUpdate.check">Güncelleme denetle</button>
+                  </div>
+                </div>
+                <label class="setting">
+                  <div><strong data-i18n="set.appAuto">Otomatik güncelle</strong><span data-i18n="set.appAuto.sub">Yeni sürümleri arka planda indir, uygulamadan çıkarken kur</span></div>
+                  <span class="switch"><input type="checkbox" id="set-app-auto"><span class="slider"></span></span>
+                </label>
+              </div>
+
+              <div class="sub-block">
+                <div class="setting-inline">
+                  <div>
                     <strong data-i18n="set.tcc">Tam Disk Erişimi</strong>
                     <span class="muted" data-i18n="set.tcc.sub">Tüm klasörleri taramak için Aegis'e Tam Disk Erişimi verin (Sistem Ayarları → Gizlilik ve Güvenlik).</span>
                   </div>
@@ -483,7 +500,7 @@
                   </svg>
                 </div>
                 <h4>Aegis Security Suite</h4>
-                <p class="muted" data-i18n="set.version">Sürüm 0.1.0 · İmza DB v2026.10</p>
+                <p class="muted" id="app-version">Sürüm 0.1.0</p>
                 <p class="muted" id="set-about-sub" data-i18n="set.about.sub">Talep üzerine tarama, şifreli karantina, kural tabanlı firewall</p>
                 <h5 class="about-h" data-i18n="set.roadmap">Yol haritası</h5>
                 <ul class="about-list">

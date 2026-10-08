@@ -586,8 +586,8 @@ async function loadQuarantine() {
       <td class="row-muted">${fmtTime(q.quarantinedAt)}</td>
       <td>
         <div class="cell-actions">
-          <button class="btn ghost sm" data-restore="${q.id}">${esc(restoreLabel)}</button>
-          <button class="btn danger sm" data-del="${q.id}">${esc(deleteLabel)}</button>
+          <button class="btn ghost sm" data-restore="${esc(q.id)}">${esc(restoreLabel)}</button>
+          <button class="btn danger sm" data-del="${esc(q.id)}">${esc(deleteLabel)}</button>
         </div>
       </td>
     </tr>`
@@ -652,11 +652,11 @@ function renderRulesBody() {
       }
       return `
     <tr>
-      <td><span class="tag ${r.type}">${r.type === 'block' ? esc(blockLabel) : esc(allowLabel)}</span></td>
+      <td><span class="tag ${r.type === 'block' ? 'block' : 'allow'}">${r.type === 'block' ? esc(blockLabel) : esc(allowLabel)}</span></td>
       <td>${esc(r.host || '*')}${hostSub}</td>
       <td class="row-muted">${r.port ? esc(r.port) : esc(allLabel)}</td>
       <td class="row-muted">${esc(r.note || '')}</td>
-      <td><div class="cell-actions"><button class="btn ghost sm" data-rule-del="${r.id}">${esc(deleteLabel)}</button></div></td>
+      <td><div class="cell-actions"><button class="btn ghost sm" data-rule-del="${esc(r.id)}">${esc(deleteLabel)}</button></div></td>
     </tr>`;
     })
     .join('');

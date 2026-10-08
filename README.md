@@ -20,6 +20,8 @@ Modül testleri (electron gerektirmez):
 node --test test/signatures.test.js   # imza DB + mini YARA motoru
 node --test test/archive.test.js      # arşiv tarama (zip/tar/gz)
 node --test test/cache.test.js        # hash önbelleği
+node --test test/dbupdate.test.js     # imza DB güncelleme (Ed25519, yönlendirme, dizin)
+node --test test/validate.test.js     # IPC girdi doğrulaması (ayarlar, firewall kuralları)
 ```
 
 Yararlı bayraklar:
@@ -72,8 +74,21 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
 - **Fidye izleyici**: Belgeler/Masaüstü'ne yem dosyaları (honeypot) +
   `fs.watch` ile anlık alarm + 5 sn içinde toplu değişiklik patlaması tespiti
 - **Zamanlanmış tarama**: uygulama açıkken saatlik/günlük periyodik tarama
-- **İmza DB güncelleme**: `db.json` + `.sha256` yan dosyası doğrulaması;
-  özet uyuşmazlığında güncelleme **reddedilir** (yalnızca https/localhost)
+- **İmza DB güncelleme**: `db.json` + `.sha256` + **Ed25519 yayıncı imzası**
+  (`db.json.sig`). Uzak (https) güncelleme yalnızca uygulamaya gömülü
+  `signatures/db-public.pem` ile doğrulanan imzayla kabul edilir; anahtar
+  yoksa uzak güncelleme **reddedilir**. Güncellemeler salt okunur paket
+  yerine kullanıcı dizinine (`userData/signatures`) yazılır; uygulama
+  güncellemesi daha yeni bir DB getirirse kullanıcı kopyası yenilenir.
+
+  Yayıncı kurulumu (bir kez):
+
+  ```bash
+  node scripts/db-keygen.js            # özel anahtar ~/.aegis/db-signing-key.pem, açık anahtar signatures/db-public.pem
+  node scripts/sign-db.js yol/db.json  # db.json.sig + db.json.sha256 üretir; üçünü aynı adrese yükleyin
+  ```
+
+  Özel anahtarı depoya eklemeyin; `db-public.pem`'i ekleyip uygulamayı yeniden paketleyin.
 - **Çoklu dil**: TR/EN (Ayarlar → Dil), tüm statik ve dinamik metinler
 - **Tarama geçmişi + rapor dışa aktarma**: son 100 tarama (mod, süre, tehdit
   listesi, izin hataları) ve tek tıkla **JSON/CSV** kaydetme
@@ -147,9 +162,8 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
 5. **Tam Disk Erişimi (TCC)** — UI'da rehber butonu var; ilk kurulumda akış
    olarak istenmeli (Ayarlar → Gizlilik ve Güvenlik)
 6. **Gerçek imza istihbaratı** — şu an demo hash + örnek YARA kuralları;
-   gerçek tehdit beslemesi (ör. açık imza kaynakları) + Ed25519 ile imzalı
-   yayın gerekiyor (yan dosya özeti yalnızca bozulmayı değil, saldırıyı da
-   engellemek için asimetrik imza ister)
+   gerçek tehdit beslemesi (ör. açık imza kaynakları) gerekiyor; Ed25519
+   imzalı yayın altyapısı hazır (yayıncı anahtarı üretilip paketlenmeli)
 7. **Otomatik uygulama güncellemesi** — `electron-updater` entegrasyonu
 8. **Uygulama kapanınca da çalışan zamanlanmış tarama** — launchd plist
    iskeleti (README: `native-daemon/` içinde)

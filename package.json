@@ -6,7 +6,7 @@
   "scripts": {
     "start": "env -u NODE_OPTIONS electron .",
     "test": "env -u NODE_OPTIONS electron test/e2e-scan.js",
-    "test:unit": "node --test test/signatures.test.js test/archive.test.js test/cache.test.js",
+    "test:unit": "node --test test/signatures.test.js test/archive.test.js test/cache.test.js test/dbupdate.test.js test/validate.test.js",
     "icon": "env -u NODE_OPTIONS electron scripts/make-icon.js",
     "bench": "env -u NODE_OPTIONS electron test/bench-scan.js",
     "dist": "electron-builder --mac"
@@ -15,7 +15,7 @@
   "license": "MIT",
   "devDependencies": {
     "electron": "^44.5.1",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^26.15.3"
   },
   "build": {
     "appId": "com.aegis.antivirus",

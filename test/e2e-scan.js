@@ -38,7 +38,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 app.whenReady().then(async () => {
   // Karantina anahtarı → Keychain (safeStorage) — gerçek göç yolu
   const keyMode = quarantine.initSecureKey(safeStorage);
-  check("Karantina anahtarı Keychain'e taşındı", keyMode === 'keychain', `mod=${keyMode}`);
+  if (safeStorage.isEncryptionAvailable()) {
+    check("Karantina anahtarı Keychain'e taşındı", keyMode === 'keychain', `mod=${keyMode}`);
+  } else {
+    // Linux CI / anahtar zinciri olmayan ortam: dosya anahtarına düşmek beklenen davranış
+    check('Keychain yok → dosya anahtarına düşüldü', keyMode === 'file', `mod=${keyMode}`);
+  }
 
   const tmp = fs.mkdtempSync(path.join(app.getPath('temp'), 'aegis-e2e-'));
 
@@ -228,7 +233,10 @@ app.whenReady().then(async () => {
   }
 
   // İzin verilmeyen dizin raporu (TCC izni emülasyonu)
-  try {
+  // root chmod 000 dizini yine okuyabildiği için emülasyon root'ta anlamsız
+  if (process.getuid && process.getuid() === 0) {
+    skip('İzin verilmeyen dizin raporlandı', 'root olarak çalışıyor (chmod 000 etkisiz)');
+  } else try {
     const locked = path.join(tmp, 'kilitli');
     fs.mkdirSync(locked, { recursive: true });
     fs.writeFileSync(path.join(locked, 'gizli.txt'), 'gizli');
@@ -284,6 +292,51 @@ app.whenReady().then(async () => {
     fs.rmSync(exDir, { recursive: true, force: true });
   } catch (err) {
     check('Dışlama uygulandı', false, String(err.message || err));
+  }
+
+  // Dışlama yalnızca dizinin kendisini kapsar ("dislama" → "dislama2" taranır)
+  try {
+    const exDir = path.join(tmp, 'dislama-kok');
+    const sibDir = path.join(tmp, 'dislama-kok2');
+    fs.mkdirSync(exDir, { recursive: true });
+    fs.mkdirSync(sibDir, { recursive: true });
+    const sibFile = path.join(sibDir, 'kardes.bin');
+    fs.writeFileSync(sibFile, 'kardes dizin icerigi');
+    const sibHash = crypto.createHash('sha256').update(fs.readFileSync(sibFile)).digest('hex');
+    scanner.SIGNATURES.set(sibHash, 'Test.Sibling-Match');
+    const rSib = await scanner.run(
+      { paths: [tmp], exclusions: [exDir], heuristics: false, autoQuarantine: false, signaturesDir: SIGNATURES_DIR, maxWorkers: 0 },
+      () => {}
+    );
+    check(
+      'Dışlama kardeş dizini kapsamadı',
+      rSib.threats.some((t) => t.path === sibFile),
+      rSib.threats.map((t) => t.path.split('/').pop()).join(',') || 'tehdit yok'
+    );
+    fs.rmSync(exDir, { recursive: true, force: true });
+    fs.rmSync(sibDir, { recursive: true, force: true });
+  } catch (err) {
+    check('Dışlama kardeş dizini kapsamadı', false, String(err.message || err));
+  }
+
+  // Yolunda "!" geçen gerçek dosya da karantinaya alınır (arşiv girdisi sanılmaz)
+  try {
+    const bangDir = path.join(tmp, 'unlem');
+    fs.mkdirSync(bangDir, { recursive: true });
+    const bangFile = path.join(bangDir, 'indir!.bin');
+    fs.writeFileSync(bangFile, 'unlemli dosya icerigi');
+    const bangHash = crypto.createHash('sha256').update(fs.readFileSync(bangFile)).digest('hex');
+    scanner.SIGNATURES.set(bangHash, 'Test.Bang-Match');
+    const rBang = await scanner.run(
+      { paths: [bangDir], heuristics: false, autoQuarantine: true, signaturesDir: SIGNATURES_DIR },
+      () => {}
+    );
+    const th = rBang.threats.find((t) => t.path === bangFile);
+    check('"!" içeren yol karantinaya alındı', !!(th && th.quarantined) && !fs.existsSync(bangFile), th ? `q=${th.quarantined}` : 'tehdit yok');
+    if (th && th.quarantineId) quarantine.remove(th.quarantineId);
+    fs.rmSync(bangDir, { recursive: true, force: true });
+  } catch (err) {
+    check('"!" içeren yol karantinaya alındı', false, String(err.message || err));
   }
 
   // Paralel tarama (worker havuzu) — 8'den fazla dosya havuzu zorlar
@@ -445,6 +498,24 @@ app.whenReady().then(async () => {
     check('Orfan karantina artığı temizlendi', n >= 1 && !fs.existsSync(orphan), `silinen=${n}`);
   } catch (err) {
     check('Orfan karantina artığı temizlendi', false, String(err.message || err));
+  }
+
+  // ---------- Karantina kimliği doğrulaması (dizin dışına erişim yok) ----------
+  try {
+    const victim = path.join(tmp, 'kurban.txt');
+    fs.writeFileSync(victim, 'silinmemeli');
+    const fakeMeta = path.join(tmp, 'sahte.json');
+    fs.writeFileSync(fakeMeta, JSON.stringify({ id: 'x', file: victim, originalPath: victim }));
+    const rel = path.relative(quarantine.QUARANTINE_DIR, fakeMeta).replace(/\.json$/, '');
+    const rDel = quarantine.remove(rel);
+    const rRes = await quarantine.restore(rel);
+    check(
+      'Geçersiz karantina kimliği reddedildi',
+      !rDel.ok && !rRes.ok && fs.existsSync(victim) && fs.existsSync(fakeMeta),
+      `${rDel.error} | ${rRes.error}`
+    );
+  } catch (err) {
+    check('Geçersiz karantina kimliği reddedildi', false, String(err.message || err));
   }
 
   // ---------- Keychain enjeksiyonu (safeStorage yolu emülasyonu) ----------

@@ -5,3 +5,6 @@ dist/
 .env
 *.tmp
 test/*.png
+
+# İmza DB yayıncı özel anahtarı — asla depoya eklenmez
+*signing-key*.pem

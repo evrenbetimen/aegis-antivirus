@@ -8,7 +8,7 @@
 //   - Bozuk/desteklenmeyen arşivler hata fırlatmaz; atlanır.
 //
 const path = require('path');
-const { spawn, execFile } = require('child_process');
+const { spawn, execFile, execFileSync } = require('child_process');
 const { PassThrough } = require('stream');
 
 const ZIP_EXTS = ['.zip'];
@@ -159,6 +159,35 @@ async function listEntries(filePath, opts = {}) {
 
 /* --------------------------- İçerik akışı açma --------------------------- */
 
+// unzip ve bsdtar (macOS tar) girdi adını kalıp (glob) olarak yorumlar:
+// "[x].exe" gibi bir ad kendisiyle eşleşmez ve içerik hiç okunmaz. Kalıp
+// karakterleri ters bölüyle kaçırılır. GNU tar adı birebir alır (kaçırma yok).
+function escapeGlob(name) {
+  return String(name).replace(/[\\*?[\]]/g, '\\$&');
+}
+
+let tarIsBsd = null;
+function isBsdTar() {
+  if (tarIsBsd === null) {
+    try {
+      tarIsBsd = /bsdtar/i.test(execFileSync('tar', ['--version'], { encoding: 'utf8', timeout: 5000 }));
+    } catch {
+      tarIsBsd = true; // macOS varsayılanı
+    }
+  }
+  return tarIsBsd;
+}
+
+/** Girdi adını araç argümanına çevirir ("-x" gibi adlar seçenek sanılmasın). */
+function zipMemberArg(name) {
+  const n = escapeGlob(name);
+  return n.startsWith('-') ? '\\' + n : n;
+}
+
+function tarMemberArg(name) {
+  return isBsdTar() ? escapeGlob(name) : String(name);
+}
+
 function openEntryStream(filePath, entryName) {
   const kind = kindOf(filePath);
   let cmd = null;
@@ -166,10 +195,10 @@ function openEntryStream(filePath, entryName) {
 
   if (kind === 'zip') {
     cmd = 'unzip';
-    args = ['-p', filePath, entryName];
+    args = ['-p', filePath, zipMemberArg(entryName)];
   } else if (kind === 'tar') {
     cmd = 'tar';
-    args = ['-xOf', filePath, entryName];
+    args = ['-xOf', filePath, '--', tarMemberArg(entryName)];
   } else if (kind === 'gz') {
     cmd = 'gzip';
     args = ['-dc', filePath];
@@ -221,6 +250,8 @@ function openEntryStream(filePath, entryName) {
 /**
  * Arşivdeki her girdi için onEntry(entry, getStream) çağırır.
  * getStream()'ü çağırmak zorunda değil (atlanan girdilerde çağırmaz).
+ * onEntry okuduğu bayt sayısını döndürebilir; boyutu bilinmeyen (tar/gz)
+ * girdilerde maxTotalBytes bütçesi bununla uygulanır.
  *
  * @returns {{scanned:number, skipped:number, totalBytes:number, truncated:boolean}}
  */
@@ -251,7 +282,7 @@ async function scanEntries(filePath, onEntry, opts = {}) {
       res.truncated = true;
       break;
     }
-    if (entry.isDir || unsafeName(entry.name) || String(entry.name).startsWith('-')) {
+    if (entry.isDir || unsafeName(entry.name)) {
       res.skipped++;
       continue;
     }
@@ -267,9 +298,10 @@ async function scanEntries(filePath, onEntry, opts = {}) {
     };
 
     try {
-      await onEntry(entry, getStream);
+      const readBytes = await onEntry(entry, getStream);
       res.scanned++;
-      const sz = entry.size || 0;
+      // tar/gz boyut bildirmez: tüketicinin okuduğu bayt sayısı bütçeye yazılır
+      const sz = entry.size || (Number.isFinite(readBytes) ? readBytes : 0);
       budget += sz;
       res.totalBytes += sz;
     } catch {

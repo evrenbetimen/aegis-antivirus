@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
+const { sanitizeSettingsPatch, sanitizeRules } = require('./validate');
 
 const FILE = path.join(app.getPath('userData'), 'aegis-store.json');
 
@@ -85,7 +86,7 @@ function save() {
 module.exports = {
   getSettings: () => load().settings,
   updateSettings(patch) {
-    Object.assign(load().settings, patch);
+    Object.assign(load().settings, sanitizeSettingsPatch(patch));
     save();
     return load().settings;
   },
@@ -135,7 +136,8 @@ module.exports = {
   },
   getRules: () => load().rules,
   setRules(rules) {
-    load().rules = rules;
+    const clean = sanitizeRules(rules);
+    if (clean) load().rules = clean;
     save();
     return load().rules;
   }

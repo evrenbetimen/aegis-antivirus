@@ -197,3 +197,54 @@ test('bozuk arşiv hata fırlatmaz', async () => {
   assert.equal(archive.isArchive('dosya.txt'), false);
   fs.rmSync(d, { recursive: true, force: true });
 });
+
+test('özel girdi adları ("-x", "[x]", "*") atlanmadan okunur', async () => {
+  const d = tmpdir();
+  const names = ['-gizli.txt', '[x].exe', 'a*b.txt'];
+  for (const n of names) fs.writeFileSync(path.join(d, n), 'icerik ' + MARKER);
+  fs.writeFileSync(path.join(d, 'aXb.txt'), 'zararsiz');
+  const zip = path.join(d, 'ozel.zip');
+  execFileSync('zip', ['-q', zip, '--', ...names, 'aXb.txt'], { cwd: d });
+  const tar = path.join(d, 'ozel.tar');
+  execFileSync('tar', ['-cf', tar, '--', ...names], { cwd: d });
+
+  for (const arc of [zip, tar]) {
+    const hits = {};
+    const res = await archive.scanEntries(arc, async (entry, getStream) => {
+      hits[entry.name] = (await readEntry(getStream)).toString('utf8');
+    });
+    for (const n of names) {
+      assert.equal(hits[n], 'icerik ' + MARKER, `${path.basename(arc)}: ${n} okunamadı`);
+    }
+    assert.equal(res.skipped, 0, JSON.stringify(res));
+    // "a*b.txt" kalıp olarak yorumlanıp "aXb.txt" ile birleşmemeli
+    if (arc === zip) assert.equal(hits['aXb.txt'], 'zararsiz');
+  }
+  fs.rmSync(d, { recursive: true, force: true });
+});
+
+test('tar: boyutu bilinmeyen girdilerde toplam bayt bütçesi okunan baytla uygulanır', async () => {
+  const d = tmpdir();
+  const names = [];
+  for (let i = 0; i < 5; i++) {
+    const n = `b${i}.bin`;
+    fs.writeFileSync(path.join(d, n), Buffer.alloc(64 * 1024, 65 + i));
+    names.push(n);
+  }
+  const tar = path.join(d, 'butce.tar');
+  execFileSync('tar', ['-cf', tar, ...names], { cwd: d });
+
+  let calls = 0;
+  const res = await archive.scanEntries(
+    tar,
+    async (entry, getStream) => {
+      calls++;
+      return (await readEntry(getStream)).length;
+    },
+    { maxTotalBytes: 100 * 1024 }
+  );
+  assert.equal(calls, 2, `bütçe aşıldı: ${calls} girdi okundu`);
+  assert.ok(res.truncated, JSON.stringify(res));
+  assert.equal(res.totalBytes, 128 * 1024);
+  fs.rmSync(d, { recursive: true, force: true });
+});

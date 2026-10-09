@@ -40,6 +40,18 @@ function isArchive(filePath) {
   return kindOf(filePath) !== null;
 }
 
+/**
+ * İç içe arşivi geçici dosyaya yazarken kullanılacak güvenli uzantı.
+ * Girdi adının kendisi asla dosya yolu olarak kullanılmaz.
+ */
+function archiveExt(name) {
+  const p = lower(name);
+  for (const e of ['.tar.gz', '.tar.bz2', '.tgz', '.tbz2', '.tar', '.zip', '.gz', '.bz2']) {
+    if (p.endsWith(e)) return e;
+  }
+  return null;
+}
+
 function baseArchiveName(filePath) {
   const p = lower(filePath);
   if (p.endsWith('.tar.gz')) return path.basename(filePath).slice(0, -7);
@@ -312,4 +324,4 @@ async function scanEntries(filePath, onEntry, opts = {}) {
   return res;
 }
 
-module.exports = { isArchive, listEntries, scanEntries, unsafeName, DEFAULTS };
+module.exports = { isArchive, archiveExt, listEntries, scanEntries, unsafeName, DEFAULTS };

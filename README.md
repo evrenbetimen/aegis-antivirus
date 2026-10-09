@@ -198,8 +198,9 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
 
 ### 🟢 İyileştirme fırsatları (yerel yapılabilir)
 
-9. **Arşiv taraması derinliği** — içindeki iç içe arşivler şimdilik taramaz
-   (tek katman); recursive tarama + toplam bütçe eklenebilir
+9. ✅ **İç içe arşiv taraması** — zip/tar/gz içindeki arşivlere 3 katmana
+   kadar iner; girdi (300) ve bayt (200 MB) bütçesi tüm katmanlarda ortak,
+   iç arşivler 0700 geçici klasörde açılıp hemen silinir
 10. **Alan adı bazlı phishing engelleme** — Evre 1'de domain kuralları DNS ile
     çözülüp IP üzerinden eşleşir; bağlantı öncesi hostname engeli NEFilter ister
 11. **.dmg/.pkg kurulum paketi taraması** — hdiutil ile bağlama desteği yok
@@ -207,8 +208,8 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
     hash ile hızlı yaklaşık eşleşme
 13. **Uygulama/HTML ikinci dil testi + çevirinin tam senkronu** — TR/EN
     eklendi; üçüncü dil için sözlük genişletilmeli
-14. **Etkinlik/olay akışı dışa aktarma** (JSON/CSV) — tarama geçmişi
-    dışa aktarılabilir; etkinlik akışı henüz dışa aktarılamıyor
+14. ✅ **Etkinlik kaydı dışa aktarma** (JSON/CSV) — Etkinlik sayfasından;
+    CSV hücreleri formül enjeksiyonuna karşı korunur (tarama geçmişi dahil)
 
 > Tamamlananlar: karantina anahtarı Keychain'e taşındı, paralel (worker)
 > tarama eklendi, tarama geçmişi + JSON/CSV dışa aktarma eklendi.

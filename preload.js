@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('api', {
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),
   getStats: () => ipcRenderer.invoke('stats:get'),
   getEvents: () => ipcRenderer.invoke('events:get'),
+  eventsExport: (format) => ipcRenderer.invoke('events:export', format),
   getRuntime: () => ipcRenderer.invoke('runtime:get'),
   fdaStatus: () => ipcRenderer.invoke('perm:fda'),
   appVersion: () => ipcRenderer.invoke('update:status'),

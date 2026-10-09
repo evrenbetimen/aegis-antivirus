@@ -253,6 +253,8 @@ doğrulamak için:
 3. **AegisFirewall** hedefi: *Network Extension*, **Provider Type: Filter
    Data** (`com.apple.networkextension.filter-data`), dil **Swift**.
    Şablon `FilterDataProvider.swift` + `main.swift` üretir.
+   **Build Phases → Link Binary With Libraries**'e `libbsm.tbd` ekleyin
+   (`audit_token_to_pid` buradan gelir; eksikse bağlama hatası verir).
 4. **`main.swift` dosyalarını silin.** Bizim dosyalarımız `@main` ile kendi
    giriş noktasına sahiptir; hedefte `main.swift` varsa derleme şunu verir:
    `'main' attribute cannot be used in a module that contains top-level code`.

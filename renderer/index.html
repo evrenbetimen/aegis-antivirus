@@ -363,8 +363,13 @@
           <div class="panel">
             <div class="panel-head">
               <h3 data-i18n="log.title">Etkinlik kaydı</h3>
-              <button class="btn ghost sm" id="btn-refresh-events" data-i18n="log.refresh">Yenile</button>
+              <div class="btn-row">
+                <button class="btn ghost sm" id="btn-events-json" data-i18n="log.exportJson">JSON kaydet</button>
+                <button class="btn ghost sm" id="btn-events-csv" data-i18n="log.exportCsv">CSV kaydet</button>
+                <button class="btn ghost sm" id="btn-refresh-events" data-i18n="log.refresh">Yenile</button>
+              </div>
             </div>
+            <div class="muted" id="events-export-status"></div>
             <div class="feed" id="activity-feed">
               <div class="feed-empty" data-i18n="feed.empty">Henüz etkinlik yok</div>
             </div>

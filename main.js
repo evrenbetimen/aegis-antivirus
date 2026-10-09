@@ -293,11 +293,40 @@ ipcMain.handle('scan:createEicar', () => scanner.createEicarTestFile());
 
 /* ---------------- IPC: Tarama geçmişi ---------------- */
 
+// CSV hücresi: tırnak kaçışı + formül enjeksiyonu koruması. Dosya adları
+// saldırgan kontrolünde olabilir ("=HYPERLINK(...).exe"); = + - @ ile
+// başlayan hücreler elektronik tabloda formül olarak çalışmasın diye ' alır.
+function csvCell(v) {
+  let s = v == null ? '' : String(v);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return /[",\n\r;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function eventsToCSV(items) {
+  const rows = [['tarih', 'tur', 'baslik', 'ayrinti'].join(',')];
+  for (const e of items) {
+    rows.push([new Date(e.ts || 0).toISOString(), e.type, e.title, e.detail].map(csvCell).join(','));
+  }
+  return rows.join('\n') + '\n';
+}
+
+async function saveExport(fmt, content, title, baseName) {
+  const res = await dialog.showSaveDialog(win, {
+    title,
+    defaultPath: path.join(app.getPath('documents'), `${baseName}.${fmt}`),
+    filters: [{ name: fmt.toUpperCase(), extensions: [fmt] }]
+  });
+  if (res.canceled || !res.filePath) return { ok: false, canceled: true };
+  try {
+    fs.writeFileSync(res.filePath, content);
+    return { ok: true, path: res.filePath };
+  } catch (err) {
+    return { ok: false, error: String(err.message || err) };
+  }
+}
+
 function historyToCSV(items) {
-  const esc = (v) => {
-    const s = v == null ? '' : String(v);
-    return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-  };
+  const esc = csvCell;
   const rows = [
     ['tarih', 'mod', 'sure_ms', 'dosya', 'bayt', 'tehdit', 'izin_hatasi', 'kesildi', 'imza_surumu', 'tehditler'].join(',')
   ];
@@ -335,18 +364,27 @@ ipcMain.handle('scan:history:export', async (_e, format) => {
           null,
           2
         );
-  const res = await dialog.showSaveDialog(win, {
-    title: fmt === 'csv' ? 'Tarama geçmişini CSV kaydet' : 'Tarama geçmişini JSON kaydet',
-    defaultPath: path.join(app.getPath('documents'), `aegis-tarama-gecmisi.${fmt}`),
-    filters: [{ name: fmt.toUpperCase(), extensions: [fmt] }]
-  });
-  if (res.canceled || !res.filePath) return { ok: false, canceled: true };
-  try {
-    fs.writeFileSync(res.filePath, content);
-    return { ok: true, path: res.filePath };
-  } catch (err) {
-    return { ok: false, error: String(err.message || err) };
-  }
+  return saveExport(
+    fmt,
+    content,
+    fmt === 'csv' ? 'Tarama geçmişini CSV kaydet' : 'Tarama geçmişini JSON kaydet',
+    'aegis-tarama-gecmisi'
+  );
+});
+
+ipcMain.handle('events:export', async (_e, format) => {
+  const fmt = format === 'csv' ? 'csv' : 'json';
+  const items = store.getEvents();
+  const content =
+    fmt === 'csv'
+      ? eventsToCSV(items)
+      : JSON.stringify({ app: 'Aegis Security Suite', exportedAt: new Date().toISOString(), count: items.length, events: items }, null, 2);
+  return saveExport(
+    fmt,
+    content,
+    fmt === 'csv' ? 'Etkinlik kaydını CSV kaydet' : 'Etkinlik kaydını JSON kaydet',
+    'aegis-etkinlik-kaydi'
+  );
 });
 
 /* ---------------- IPC: Karantina ---------------- */

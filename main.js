@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Notification, shell, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Notification, shell, safeStorage, nativeTheme } = require('electron');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -14,6 +14,9 @@ const { createUpdater } = require('./src/updater');
 const { NativeBridge, writePolicy } = require('./src/native-bridge');
 const { Honeypot } = require('./src/honeypot');
 const { Scheduler } = require('./src/scheduler');
+const sysaudit = require('./src/sysaudit');
+const startupItems = require('./src/startup-items');
+const breach = require('./src/breach');
 
 // Paketle gelen imzalar app.asar içinde (salt okunur); tarama ve güncellemeler
 // kullanıcı dizinindeki kopyayı kullanır (bkz. dbupdate.prepareSignaturesDir).
@@ -40,6 +43,17 @@ function notify(title, body) {
   }
 }
 
+/* ---------------- Tema (açık / koyu / sistem) ---------------- */
+
+function applyTheme(settings) {
+  const t = settings && settings.theme;
+  nativeTheme.themeSource = t === 'light' || t === 'dark' ? t : 'system';
+}
+
+function windowBackground() {
+  return nativeTheme.shouldUseDarkColors ? '#0d1117' : '#f5f7fa';
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1280,
@@ -48,7 +62,7 @@ function createWindow() {
     minHeight: 640,
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 18, y: 18 },
-    backgroundColor: '#070b14',
+    backgroundColor: windowBackground(),
     icon: path.join(__dirname, 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -467,6 +481,7 @@ ipcMain.handle('db:verify', () => dbupdate.verifyLocal(SIGNATURES_DIR, DB_PUBLIC
 ipcMain.handle('settings:get', () => store.getSettings());
 ipcMain.handle('settings:set', (_e, patch) => {
   const s = store.updateSettings(patch);
+  applyTheme(s);
   applyHoneypot(s);
   applyScheduler(s);
   applyShieldPolicy(s);
@@ -478,8 +493,28 @@ ipcMain.handle('runtime:get', () => ({
   honeypot: honeypot ? honeypot.status() : { running: false },
   scheduler: scheduler ? scheduler.status() : { enabled: false },
   native: nativeBridge ? nativeBridge.status() : { listening: false, connected: false },
+  engine: signatures.engineInfo(),
+  platform: process.platform,
   scanning: scanner.isScanning()
 }));
+
+/* ---------------- IPC: Güvenlik merkezi ---------------- */
+
+ipcMain.handle('audit:run', () => sysaudit.audit());
+
+ipcMain.handle('startup:list', () => {
+  let db = null;
+  try {
+    db = signatures.load(SIGNATURES_DIR);
+    for (const [hash, name] of scanner.SIGNATURES) signatures.addLocalSignature(db, hash, name);
+  } catch {
+    db = null;
+  }
+  return startupItems.list({ checkFile: db ? (file) => signatures.checkFile(file, db) : null });
+});
+
+// Parola yalnızca SHA-1 önekiyle (k-anonimlik) sorgulanır; hiçbir yere yazılmaz
+ipcMain.handle('identity:breach', (_e, password) => breach.checkPassword(password));
 
 ipcMain.handle('update:status', () => updater.status());
 ipcMain.handle('update:check', () => updater.check());
@@ -497,6 +532,7 @@ ipcMain.handle('shell:openExternal', (_e, url) => {
 /* ---------------- Uygulama yaşam döngüsü ---------------- */
 
 app.whenReady().then(() => {
+  applyTheme(store.getSettings());
   try {
     dbupdate.prepareSignaturesDir(BUNDLED_SIGNATURES_DIR, SIGNATURES_DIR);
   } catch (err) {

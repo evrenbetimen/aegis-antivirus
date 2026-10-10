@@ -16,125 +16,39 @@ const TITLES = {
   scan: 'page.scan',
   quarantine: 'page.quarantine',
   firewall: 'page.firewall',
+  audit: 'page.audit',
+  startup: 'page.startup',
+  identity: 'page.identity',
   activity: 'page.activity',
   settings: 'page.settings'
 };
 
-// Dinamik metin sözlüğü (TR + EN) — HTML dışı betik metinleri için
-const DYN = {
-  tr: {
-    'event.scanDone': 'Tarama tamamlandı — {files} dosya, {threats} tehdit',
-    'event.permissionDenied': '{n} dizine erişilemedi (izin yok)',
-    'scan.denied': '⚠ {n} dizin okunamadı — Tam Disk Erişimi izni gerekebilir',
-    'event.threat': 'Tehdit: {name}',
-    'event.ransomware': 'Fidye şüphesi: {kind}',
-    'event.quarantineRestored': 'Karantinadan geri yüklendi',
-    'event.dbUpdated': 'İmza DB güncellendi → {version}',
-    'scan.progress': '{n} dosya · {bytes}',
-    'scan.clean': '✓ Temiz — {files} dosya tarandı ({bytes}, {sec}s){stopped}',
-    'scan.dirty': '⚠ {n} tehdit bulundu — {files} dosya tarandı ({sec}s)',
-    'scan.stopped': ' · tarama durduruldu',
-    'scan.noThreat': 'Tehdit bulunmadı',
-    'scan.scanning': 'Taranıyor…',
-    'scan.error': 'Hata: {msg}',
-    'q.count': '{n} öğe',
-    'q.restored': 'Geri yüklendi',
-    'q.deleted': 'Silindi',
-    'conn.empty': 'Aktif bağlantı yok',
-    'conn.blocked': 'ENGELLENDİ',
-    'conn.allowed': 'İZİN',
-    'fw.resolvedIps': '{n} IP çözümlendi',
-    'fw.unresolved': 'Çözümlenemedi: {reason}',
-    'db.idle': 'v2026.10.1',
-    'db.checking': 'Denetleniyor…',
-    'db.uptodate': 'Güncel ({version} · {count} imza)',
-    'db.updated': 'Güncellendi → {version} ({count} imza)',
-    'db.error': 'Hata: {reason}',
-    'integrity.ok': 'Sağlam: {n} kayıt',
-    'integrity.bad': '⚠ {n} kayıt bozulmuş!',
-    'integrity.legacy': 'Sağlam: {n} kayıt (eski sürüm {legacy})',
-    'rules.empty': 'Kural yok',
-    'time.now': 'şimdi',
-    'time.m': '{n} dk önce',
-    'time.h': '{n} sa önce',
-    'time.d': '{n} gün önce',
-    'runtime.pending': 'native daemon bekleniyor',
-    'runtime.active': 'devrede',
-    'event.shieldBlocked': 'Kalkan engelledi: {name}',
-    'event.flowBlocked': 'Bağlantı engellendi: {host}',
-    'fda.granted': '✓ Tam Disk Erişimi verildi',
-    'fda.denied': 'Tam Disk Erişimi henüz verilmedi',
-    'fda.unknown': 'Tam Disk Erişimi durumu belirlenemedi',
-    'upd.version': 'Sürüm {v}',
-    'upd.idle': 'Sürüm {v}',
-    'upd.checking': 'Denetleniyor…',
-    'upd.none': 'Güncel (sürüm {v})',
-    'upd.downloading': 'Sürüm {v} indiriliyor… %{p}',
-    'upd.ready': 'Sürüm {v} hazır, çıkışta kurulacak',
-    'upd.error': 'Güncelleme denetlenemedi: {reason}',
-    'upd.unsupported': 'Sürüm {v} · yalnızca imzalı macOS sürümünde'
-  },
-  en: {
-    'event.scanDone': 'Scan completed — {files} files, {threats} threats',
-    'event.permissionDenied': '{n} folders unreadable (permission denied)',
-    'scan.denied': '⚠ {n} folders could not be read — Full Disk Access may be required',
-    'event.threat': 'Threat: {name}',
-    'event.ransomware': 'Ransomware suspicion: {kind}',
-    'event.quarantineRestored': 'Restored from quarantine',
-    'event.dbUpdated': 'Signature DB updated → {version}',
-    'scan.progress': '{n} files · {bytes}',
-    'scan.clean': '✓ Clean — {files} files scanned ({bytes}, {sec}s){stopped}',
-    'scan.dirty': '⚠ {n} threats found — {files} files scanned ({sec}s)',
-    'scan.stopped': ' · scan stopped',
-    'scan.noThreat': 'No threats found',
-    'scan.scanning': 'Scanning…',
-    'scan.error': 'Error: {msg}',
-    'q.count': '{n} items',
-    'q.restored': 'Restored',
-    'q.deleted': 'Deleted',
-    'conn.empty': 'No active connections',
-    'conn.blocked': 'BLOCKED',
-    'conn.allowed': 'ALLOWED',
-    'fw.resolvedIps': '{n} IPs resolved',
-    'fw.unresolved': 'Could not resolve: {reason}',
-    'db.idle': 'v2026.10.1',
-    'db.checking': 'Checking…',
-    'db.uptodate': 'Up to date ({version} · {count} signatures)',
-    'db.updated': 'Updated → {version} ({count} signatures)',
-    'db.error': 'Error: {reason}',
-    'integrity.ok': 'Intact: {n} records',
-    'integrity.bad': '⚠ {n} records tampered!',
-    'integrity.legacy': 'Intact: {n} records (legacy {legacy})',
-    'rules.empty': 'No rules',
-    'time.now': 'now',
-    'time.m': '{n} min ago',
-    'time.h': '{n} h ago',
-    'time.d': '{n} d ago',
-    'runtime.pending': 'native daemon pending',
-    'runtime.active': 'active',
-    'event.shieldBlocked': 'Shield blocked: {name}',
-    'event.flowBlocked': 'Connection blocked: {host}',
-    'fda.granted': '✓ Full Disk Access granted',
-    'fda.denied': 'Full Disk Access not granted yet',
-    'fda.unknown': 'Full Disk Access status could not be determined',
-    'upd.version': 'Version {v}',
-    'upd.idle': 'Version {v}',
-    'upd.checking': 'Checking…',
-    'upd.none': 'Up to date (version {v})',
-    'upd.downloading': 'Downloading version {v}… {p}%',
-    'upd.ready': 'Version {v} is ready and will install when you quit',
-    'upd.error': 'Could not check for updates: {reason}',
-    'upd.unsupported': 'Version {v} · signed macOS build only'
-  }
-};
+// Tüm metinler locales/<dil>.js sözlüklerinden gelir
+const d = t;
 
-function d(key, vars) {
-  const lang = window.I18N.getLanguage();
-  let s = (DYN[lang] && DYN[lang][key]) || (DYN.tr && DYN.tr[key]) || key;
+/**
+ * Bir öğenin metnini ayarlar. Değişkensiz metinlerde data-i18n anahtarı
+ * güncellenir (dil değişince applyDom doğru metni yazar); değişkenli
+ * metinler dil değişiminde yeniden çizilir.
+ */
+function setText(el, key, vars) {
+  if (!el) return;
   if (vars) {
-    for (const [k, v] of Object.entries(vars)) s = s.replace(new RegExp('\\{' + k + '\\}', 'g'), v);
+    el.removeAttribute('data-i18n');
+    el.textContent = t(key, vars);
+  } else {
+    el.setAttribute('data-i18n', key);
+    el.textContent = t(key);
   }
-  return s;
+}
+
+let toastTimer = null;
+function toast(msg) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (el.hidden = true), 2600);
 }
 
 const TCC_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles';
@@ -148,7 +62,8 @@ let runtime = null;
 function goto(page) {
   $$('.nav-item').forEach((b) => b.classList.toggle('active', b.dataset.page === page));
   $$('.page').forEach((p) => p.classList.toggle('active', p.id === 'page-' + page));
-  $('#page-title').textContent = t(TITLES[page] || '');
+  setText($('#page-title'), TITLES[page] || 'page.dashboard');
+  setText($('#page-sub'), 'pagesub.' + (TITLES[page] ? page : 'dashboard'));
 
   clearInterval(connTimer);
   connTimer = null;
@@ -160,14 +75,25 @@ function goto(page) {
   if (page === 'activity') loadEvents();
   if (page === 'dashboard') refreshDashboard();
   if (page === 'scan') loadHistory();
+  if (page === 'audit') renderAudit();
+  if (page === 'startup') {
+    if (startupData) renderStartup();
+    else loadStartup();
+  }
+  if (page === 'identity') paintStrength();
 }
 
 $$('.nav-item').forEach((b) => b.addEventListener('click', () => goto(b.dataset.page)));
-$$('[data-goto]').forEach((b) => b.addEventListener('click', () => goto(b.dataset.goto)));
+document.addEventListener('click', (e) => {
+  const g = e.target.closest('[data-goto]');
+  if (g) goto(g.dataset.goto);
+  const a = e.target.closest('[data-action="quick-scan"]');
+  if (a) quickScan();
+});
 
 /* ---------- Biçimlendirme ---------- */
 function fmtNum(n) {
-  return new Intl.NumberFormat(window.I18N.getLanguage() === 'en' ? 'en-US' : 'tr-TR').format(n || 0);
+  return window.I18N.formatNumber(n);
 }
 function fmtBytes(b) {
   if (!b) return '0 B';
@@ -177,13 +103,7 @@ function fmtBytes(b) {
 }
 function fmtTime(ts) {
   if (!ts) return '—';
-  const dte = new Date(ts);
-  return dte.toLocaleString(window.I18N.getLanguage() === 'en' ? 'en-US' : 'tr-TR', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+  return window.I18N.formatDate(ts);
 }
 function relTime(ts) {
   const s = Math.floor((Date.now() - ts) / 1000);
@@ -199,8 +119,8 @@ function renderEvent(e) {
   if (e.i18n) {
     return { title: d(e.i18n.key, e.i18n.vars || {}), detail: e.detail || '' };
   }
-  // i18n alanından önce kaydedilmiş eski kayıtlar — İngilizce arayüzde çevir
-  if (window.I18N.getLanguage() === 'en') {
+  // i18n alanından önce Türkçe kaydedilmiş eski kayıtlar — diğer dillerde çevir
+  if (window.I18N.getLanguage() !== 'tr') {
     const title = e.title || '';
     if (title === 'Tarama tamamlandı') {
       const m = /(\d+) dosya tarandı, (\d+) tehdit/.exec(e.detail || '');
@@ -231,22 +151,10 @@ function paintShieldModule() {
   const el = $('#module-realtime-status');
   if (!el) return;
   const live = shieldLive();
-  el.classList.toggle('ok', live);
-  el.classList.toggle('warn', !live);
-  const ico = el.parentElement && el.parentElement.querySelector('.module-ico');
-  if (ico) {
-    ico.classList.toggle('ok', live);
-    ico.classList.toggle('warn', !live);
-  }
-  el.setAttribute('data-i18n', live ? 'status.active' : 'status.standby');
-  el.dataset.i18nOrig = live ? 'Aktif' : 'Beklemede';
-  el.textContent = t(live ? 'status.active' : 'status.standby');
-  const hero = $('#hero-sub');
-  hero.setAttribute('data-i18n', live ? 'hero.subLive' : 'hero.sub');
-  hero.dataset.i18nOrig = live
-    ? 'Gerçek zamanlı kalkan, tarama ve firewall aktif'
-    : 'Gerçek zamanlı kalkan: native daemon bekleniyor · Tarama ve firewall aktif';
-  hero.textContent = window.I18N.getLanguage() === 'tr' ? hero.dataset.i18nOrig : t(hero.getAttribute('data-i18n'));
+  el.className = 'status-tag ' + (live ? 'ok' : 'warn');
+  const ico = $('#module-realtime-ico');
+  if (ico) ico.className = 'module-ico ' + (live ? 'ok' : 'warn');
+  setText(el, live ? 'status.active' : 'status.standby');
 }
 
 // Genişletme sonradan bağlanabilir: durumu düzenli yenile
@@ -258,10 +166,146 @@ setInterval(async () => {
   } catch {}
 }, 15000);
 
+/* ---------- Güvenlik merkezi ---------- */
+const DAY = 86400000;
+let auditData = null; // sysaudit.audit() sonucu
+let startupData = null; // startup-items.list() sonucu
+let dbInfoCache = null;
+let lastStats = {};
+
+const ICONS = {
+  ok: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.2 4.2L19 7"/></svg>',
+  warn: '<svg viewBox="0 0 24 24"><path d="M12 7v6M12 17h.01"/></svg>',
+  bad: '<svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg>',
+  info: '<svg viewBox="0 0 24 24"><path d="M12 11v6M12 7h.01"/></svg>',
+  na: '<svg viewBox="0 0 24 24"><path d="M7 12h10"/></svg>'
+};
+
+const FIXES = {
+  enableRealtime: async () => {
+    await window.api.setSettings({ realtimeEnabled: true });
+    await reloadState();
+  },
+  enableFirewall: async () => {
+    await window.api.setSettings({ firewallEnabled: true });
+    await reloadState();
+  },
+  enableHoneypot: async () => {
+    await window.api.setSettings({ honeypotEnabled: true });
+    await reloadState();
+  },
+  enableAutoQuarantine: async () => {
+    await window.api.setSettings({ autoQuarantine: true });
+    await reloadState();
+  },
+  scan: () => quickScan(),
+  grantFda: () => window.api.openExternal(TCC_URL),
+  audit: () => goto('audit'),
+  startup: () => goto('startup'),
+  settings: () => goto('settings')
+};
+
+async function reloadState() {
+  settings = await window.api.getSettings();
+  runtime = await window.api.getRuntime();
+  loadSettingsUi();
+  refreshDashboard();
+}
+
+/**
+ * Önerilecek işlemler. Ağırlık puandan düşülür; 'info' düzeyi bandı
+ * sarıya çevirmez (ör. Apple onayı bekleyen gerçek zamanlı kalkan).
+ */
+function computeIssues() {
+  const out = [];
+  const s = settings || {};
+  if (!s.realtimeEnabled) {
+    out.push({ level: 'warn', key: 'issue.realtimeOff', fix: 'enableRealtime', fixKey: 'fix.enable', weight: 10 });
+  } else if (!shieldLive()) {
+    out.push({ level: 'info', key: 'issue.realtimePending', weight: 4 });
+  }
+  if (!s.firewallEnabled) out.push({ level: 'bad', key: 'issue.firewallOff', fix: 'enableFirewall', fixKey: 'fix.enable', weight: 15 });
+  if (!s.autoQuarantine) out.push({ level: 'warn', key: 'issue.autoQuarantineOff', fix: 'enableAutoQuarantine', fixKey: 'fix.enable', weight: 6 });
+  if (!s.honeypotEnabled) out.push({ level: 'warn', key: 'issue.honeypotOff', fix: 'enableHoneypot', fixKey: 'fix.enable', weight: 6 });
+
+  const last = lastStats.lastScan;
+  if (!last) out.push({ level: 'warn', key: 'issue.scanNever', fix: 'scan', fixKey: 'fix.scan', weight: 10 });
+  else if (Date.now() - last > 7 * DAY) {
+    out.push({ level: 'warn', key: 'issue.scanOld', vars: { n: Math.floor((Date.now() - last) / DAY) }, fix: 'scan', fixKey: 'fix.scan', weight: 8 });
+  }
+  if (fdaStatus === 'denied') out.push({ level: 'warn', key: 'issue.fda', fix: 'grantFda', fixKey: 'fix.grant', weight: 8 });
+  if (dbInfoCache && !dbInfoCache.version) out.push({ level: 'bad', key: 'issue.db', fix: 'settings', fixKey: 'fix.review', weight: 15 });
+
+  if (auditData && auditData.supported) {
+    const fails = auditData.items.filter((i) => i.status === 'fail').length;
+    const warns = auditData.items.filter((i) => i.status === 'warn').length;
+    if (fails) out.push({ level: 'bad', key: 'issue.auditFail', vars: { n: fails }, fix: 'audit', fixKey: 'fix.review', weight: 8 * fails });
+    else if (warns) out.push({ level: 'warn', key: 'issue.auditWarn', vars: { n: warns }, fix: 'audit', fixKey: 'fix.review', weight: 4 * warns });
+  }
+  if (startupData) {
+    const threats = startupData.items.filter((i) => i.risk === 'threat').length;
+    const risky = startupData.items.filter((i) => i.risk && i.risk !== 'threat').length;
+    if (threats) out.push({ level: 'bad', key: 'issue.startupThreat', vars: { n: threats }, fix: 'startup', fixKey: 'fix.review', weight: 25 });
+    else if (risky) out.push({ level: 'warn', key: 'issue.startupRisk', vars: { n: risky }, fix: 'startup', fixKey: 'fix.review', weight: 5 });
+  }
+  const order = { bad: 0, warn: 1, info: 2 };
+  return out.sort((a, b) => order[a.level] - order[b.level]);
+}
+
+function renderIssues(issues) {
+  const list = $('#issue-list');
+  const actionable = issues.filter((i) => i.level !== 'info').length;
+  $('#center-count').textContent = actionable ? t('center.count', { n: actionable }) : '';
+  if (!issues.length) {
+    list.innerHTML = `<div class="issue ok"><div class="issue-ico">${ICONS.ok}</div>
+      <div class="issue-info"><strong>${esc(t('center.allGood'))}</strong><span>${esc(t('center.allGood.sub'))}</span></div></div>`;
+    return;
+  }
+  list.innerHTML = issues
+    .map(
+      (i) => `<div class="issue ${i.level === 'info' ? '' : i.level}">
+      <div class="issue-ico">${ICONS[i.level]}</div>
+      <div class="issue-info"><strong>${esc(t(i.key, i.vars))}</strong><span>${esc(t(i.key + '.sub', i.vars))}</span></div>
+      ${i.fix ? `<button class="btn ${i.level === 'bad' ? 'primary' : 'ghost'} sm" data-fix="${esc(i.fix)}">${esc(t(i.fixKey))}</button>` : ''}
+    </div>`
+    )
+    .join('');
+  list.querySelectorAll('[data-fix]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      try {
+        await FIXES[b.dataset.fix]();
+      } finally {
+        b.disabled = false;
+      }
+    })
+  );
+}
+
+function paintOverall(issues) {
+  const bad = issues.filter((i) => i.level === 'bad').length;
+  const warn = issues.filter((i) => i.level === 'warn').length;
+  const level = bad ? 'bad' : warn ? 'warn' : 'ok';
+  const score = Math.max(10, 100 - issues.reduce((sum, i) => sum + i.weight, 0));
+  setScore(score, level);
+
+  $('#status-banner').className = 'status-banner ' + level;
+  setText($('#hero-title'), level === 'ok' ? 'hero.title' : 'hero.title.' + level);
+  if (level === 'ok') setText($('#hero-sub'), 'hero.sub.ok');
+  else setText($('#hero-sub'), 'hero.sub.' + level, { n: level === 'bad' ? bad : bad + warn });
+
+  $('#top-status-pill').className = 'pill ' + level;
+  setText($('#top-status-text'), level === 'ok' ? 'top.status' : 'top.status.' + level);
+  $('#protection-chip').className = 'protection-chip ' + level;
+  setText($('#sidebar-status'), level === 'ok' ? 'sidebar.status' : 'sidebar.status.' + level);
+}
+
 /* ---------- Dashboard ---------- */
 async function refreshDashboard() {
   paintShieldModule();
+  paintEngine();
   const stats = await window.api.getStats();
+  lastStats = stats || {};
   $('#stat-scanned').textContent = fmtNum(stats.filesScanned);
   $('#stat-threats').textContent = fmtNum(stats.threatsFound);
   $('#stat-lastscan').textContent = stats.lastScan ? relTime(stats.lastScan) : '—';
@@ -270,30 +314,40 @@ async function refreshDashboard() {
   $('#stat-quarantine').textContent = fmtNum(q.length);
   updateBadge('#nav-quarantine-badge', q.length);
 
-  const score = Math.max(35, 100 - Math.min(45, q.length * 8) - (shieldLive() ? 0 : 14));
-  setScore(score);
-
   // Fidye izleyici durumu
   if (runtime && runtime.honeypot) {
     const tag = $('#module-honeypot-status');
     if (tag) {
       const on = runtime.honeypot.running;
-      tag.textContent = on ? t('status.watch') : t('status.disabled');
+      setText(tag, on ? 'status.watch' : 'status.disabled');
       tag.className = 'status-tag ' + (on ? 'ok' : 'bad');
     }
   }
+
+  const issues = computeIssues();
+  renderIssues(issues);
+  paintOverall(issues);
 
   const events = await window.api.getEvents();
   renderFeed($('#dash-feed'), events.slice(0, 6));
 }
 
-function setScore(v) {
+function paintEngine() {
+  const eng = runtime && runtime.engine;
+  if (!eng) return;
+  const native = eng.engine === 'native';
+  setText($('#module-engine-sub'), native ? 'module.scanEngine.subNative' : 'module.scanEngine.sub');
+  const about = $('#about-engine');
+  if (about) about.textContent = native ? t('engine.native', { version: eng.version || '' }) : t('engine.js');
+}
+
+function setScore(v, level) {
   $('#score-value').textContent = v;
   const c = 2 * Math.PI * 52;
   const fg = $('#ring-fg');
   fg.style.strokeDasharray = c;
   fg.style.strokeDashoffset = c - (v / 100) * c;
-  fg.style.stroke = v >= 80 ? 'var(--green)' : v >= 60 ? 'var(--amber)' : 'var(--red)';
+  fg.style.stroke = { ok: 'var(--success)', warn: 'var(--warn)', bad: 'var(--danger)' }[level] || 'var(--success)';
 }
 
 function updateBadge(sel, n) {
@@ -365,10 +419,13 @@ async function startScan() {
 }
 
 $('#btn-start-scan').addEventListener('click', startScan);
-$('#top-quick-scan').addEventListener('click', () => {
+function quickScan() {
+  scanMode = 'quick';
+  $$('.mode-card').forEach((x) => x.classList.toggle('active', x.dataset.mode === 'quick'));
   goto('scan');
   startScan();
-});
+}
+$('#top-quick-scan').addEventListener('click', quickScan);
 $('#btn-stop-scan').addEventListener('click', () => window.api.scanStop());
 
 $('#btn-eicar-test').addEventListener('click', async () => {
@@ -836,9 +893,19 @@ async function loadSettings() {
   $('#set-db-url').value = settings.dbUrl || '';
   $('#set-db-auto').checked = !!settings.dbAutoUpdate;
   $('#set-app-auto').checked = settings.appAutoUpdate !== false;
-  $('#set-language').value = settings.language || 'tr';
   updateFirewallUi();
   renderExclusions();
+  paintAppearance();
+}
+
+// Ayar değişikliğinden sonra form öğelerini eşitle (gezinmeden)
+function loadSettingsUi() {
+  if (!settings) return;
+  $('#set-auto-quarantine').checked = settings.autoQuarantine;
+  $('#set-firewall').checked = settings.firewallEnabled;
+  $('#set-realtime').checked = !!settings.realtimeEnabled;
+  $('#set-honeypot').checked = !!settings.honeypotEnabled;
+  updateFirewallUi();
 }
 
 const bind = (sel, key) =>
@@ -908,18 +975,71 @@ $('#btn-add-exclusion').addEventListener('click', async () => {
   renderExclusions();
 });
 
+/* ---------- Görünüm: tema ve dil ---------- */
+const THEMES = ['system', 'light', 'dark'];
+
+function applyTheme(pref) {
+  const theme = THEMES.includes(pref) ? pref : 'system';
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn = $('#theme-toggle');
+  btn.dataset.mode = theme;
+  btn.setAttribute('data-i18n-title', 'theme.toggle.' + theme);
+  const label = t('theme.toggle.' + theme);
+  btn.setAttribute('title', label);
+  btn.setAttribute('aria-label', label);
+  $$('#set-theme button').forEach((b) => {
+    const on = b.dataset.value === theme;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-checked', on ? 'true' : 'false');
+    b.setAttribute('role', 'radio');
+  });
+}
+
+async function setTheme(theme) {
+  applyTheme(theme);
+  settings = await window.api.setSettings({ theme });
+}
+
+$('#theme-toggle').addEventListener('click', () => {
+  const cur = document.documentElement.getAttribute('data-theme') || 'system';
+  setTheme(THEMES[(THEMES.indexOf(cur) + 1) % THEMES.length]);
+});
+$$('#set-theme button').forEach((b) => b.addEventListener('click', () => setTheme(b.dataset.value)));
+
+function fillLanguageSelect() {
+  const sel = $('#set-language');
+  const pref = (settings && settings.language) || 'system';
+  sel.innerHTML =
+    `<option value="system">${esc(t('lang.system'))}</option>` +
+    window.I18N.LANGUAGES.map((l) => `<option value="${l.code}" lang="${l.code}">${esc(l.name)}</option>`).join('');
+  sel.value = pref;
+}
+
+function paintAppearance() {
+  applyTheme((settings && settings.theme) || 'system');
+  fillLanguageSelect();
+}
+
 $('#set-language').addEventListener('change', async (e) => {
   const lang = e.target.value;
-  await window.api.setSettings({ language: lang });
+  settings = await window.api.setSettings({ language: lang });
   applyLanguage(lang);
 });
 
 function applyLanguage(lang) {
   window.I18N.setLanguage(lang);
   window.I18N.applyDom();
-  // Sayfadaki dinamik içerikleri yenile
+  fillLanguageSelect();
+  applyTheme((settings && settings.theme) || 'system');
+  // Değişkenli metinleri yeniden çiz
   gotoCurrent();
   if (settings) updateFirewallUi();
+  renderResults();
+  refreshDbStatus();
+  paintUpdate({});
+  paintFda($('#tcc-status'), fdaStatus);
+  paintStrength();
+  if (breachState) paintBreach(breachState);
 }
 
 function gotoCurrent() {
@@ -937,9 +1057,18 @@ async function refreshDbStatus(prefix) {
     return;
   }
   const info = await window.api.dbInfo();
-  el.textContent = info.version
-    ? `${info.version} · ${info.count} imza${info.skipped ? ` · ${info.skipped} atlandı` : ''}`
-    : t('db.error', { reason: info.reason || '—' });
+  dbInfoCache = info;
+  let text;
+  if (info.version) {
+    const vars = { version: info.version, count: fmtNum(info.count), skipped: fmtNum(info.skipped) };
+    text = t(info.skipped ? 'db.info.skipped' : 'db.info', vars);
+    $('#sidebar-sub').textContent = t('sidebar.sub', { version: info.version });
+  } else {
+    text = t('db.error', { reason: info.reason || '—' });
+    $('#sidebar-sub').textContent = '—';
+  }
+  el.textContent = text;
+  $('#about-db').textContent = text;
 }
 
 $('#btn-db-update').addEventListener('click', async () => {
@@ -962,7 +1091,7 @@ $('#btn-integrity').addEventListener('click', async () => {
     rep.tampered > 0
       ? d('integrity.bad', { n: rep.tampered })
       : d('integrity.legacy', { n: rep.intact, legacy: rep.legacy });
-  el.style.color = rep.tampered > 0 ? 'var(--red)' : '';
+  el.style.color = rep.tampered > 0 ? 'var(--danger)' : '';
 });
 
 /* ---------- Uygulama güncellemesi ---------- */
@@ -1039,22 +1168,279 @@ async function maybeShowFdaOnboarding() {
   }
 }
 
+/* ---------- Sistem güvenlik denetimi ---------- */
+const AUDIT_ICON = { pass: ICONS.ok, warn: ICONS.warn, fail: ICONS.bad, unknown: ICONS.warn, na: ICONS.na };
+let auditRunning = false;
+
+async function runAudit() {
+  if (auditRunning) return;
+  auditRunning = true;
+  $('#btn-run-audit').disabled = true;
+  $('#audit-status').textContent = t('audit.running');
+  try {
+    auditData = await window.api.auditRun();
+  } catch (err) {
+    window.__aegis.errors.push('audit: ' + String((err && err.stack) || err));
+  }
+  auditRunning = false;
+  $('#btn-run-audit').disabled = false;
+  renderAudit();
+  if ($('#page-dashboard').classList.contains('active')) refreshDashboard();
+}
+$('#btn-run-audit').addEventListener('click', runAudit);
+
+function renderAudit() {
+  const list = $('#audit-list');
+  const status = $('#audit-status');
+  if (auditRunning) return;
+  if (!auditData) {
+    list.innerHTML = `<div class="feed-empty">${esc(t('audit.empty'))}</div>`;
+    status.textContent = '';
+    updateBadge('#nav-audit-badge', 0);
+    return;
+  }
+  if (!auditData.supported) {
+    list.innerHTML = `<div class="feed-empty">${esc(t('audit.unsupported'))}</div>`;
+    status.textContent = '';
+    updateBadge('#nav-audit-badge', 0);
+    return;
+  }
+  const items = auditData.items;
+  const passed = items.filter((i) => i.status === 'pass').length;
+  const counted = items.filter((i) => i.status !== 'na').length;
+  status.textContent = t('audit.summary', { pass: passed, total: counted, time: relTime(auditData.at) });
+  updateBadge('#nav-audit-badge', items.filter((i) => i.status === 'fail' || i.status === 'warn').length);
+  const fixLabel = t('audit.fix');
+  list.innerHTML = items
+    .map(
+      (i) => `<div class="check ${esc(i.status)}">
+      <div class="issue-ico">${AUDIT_ICON[i.status] || ICONS.na}</div>
+      <div class="check-info">
+        <strong>${esc(t('audit.item.' + i.id))}</strong>
+        <span>${esc(t('audit.item.' + i.id + '.' + (i.status === 'pass' ? 'pass' : 'sub')))}</span>
+        ${i.detail ? `<span class="detail mono">${esc(i.detail)}</span>` : ''}
+      </div>
+      <span class="status-tag ${i.status === 'pass' ? 'ok' : i.status === 'fail' ? 'bad' : i.status === 'na' ? '' : 'warn'}">${esc(t('audit.status.' + i.status))}</span>
+      ${i.status !== 'pass' && i.status !== 'na' && i.settingsUrl ? `<button class="btn ghost sm" data-settings="${esc(i.settingsUrl)}">${esc(fixLabel)}</button>` : ''}
+    </div>`
+    )
+    .join('');
+  list.querySelectorAll('[data-settings]').forEach((b) =>
+    b.addEventListener('click', () => window.api.openExternal(b.dataset.settings))
+  );
+}
+
+/* ---------- Başlangıç öğeleri ---------- */
+let startupLoading = false;
+
+async function loadStartup() {
+  if (startupLoading) return;
+  startupLoading = true;
+  $('#btn-startup-refresh').disabled = true;
+  $('#startup-body').innerHTML = `<tr class="empty-row"><td colspan="5">${esc(t('startup.loading'))}</td></tr>`;
+  try {
+    startupData = await window.api.startupList();
+  } catch (err) {
+    window.__aegis.errors.push('startup: ' + String((err && err.stack) || err));
+    startupData = { items: [], errors: [] };
+  }
+  startupLoading = false;
+  $('#btn-startup-refresh').disabled = false;
+  renderStartup();
+  if ($('#page-dashboard').classList.contains('active')) refreshDashboard();
+}
+$('#btn-startup-refresh').addEventListener('click', loadStartup);
+$('#startup-hide-apple').addEventListener('change', renderStartup);
+
+function startupStatus(i) {
+  if (i.risk === 'threat') return `<span class="row-danger">${esc(t('startup.risk.threat', { name: i.threat }))}</span>`;
+  if (i.risk) return `<span class="row-warn">${esc(t('startup.risk.' + i.risk))}</span>`;
+  return `<span class="row-ok">${esc(t('startup.ok'))}</span>`;
+}
+
+function renderStartup() {
+  if (startupLoading || !startupData) return;
+  const all = startupData.items || [];
+  updateBadge('#nav-startup-badge', all.filter((i) => i.risk).length);
+  const hideApple = $('#startup-hide-apple').checked;
+  const rows = all.filter((i) => !(hideApple && i.vendor === 'apple' && !i.risk));
+  $('#startup-count').textContent = t('startup.count', { shown: fmtNum(rows.length), total: fmtNum(all.length) });
+  const body = $('#startup-body');
+  if (!rows.length) {
+    body.innerHTML = `<tr class="empty-row"><td colspan="5">${esc(t('startup.empty'))}</td></tr>`;
+    return;
+  }
+  const revealLabel = t('startup.reveal');
+  body.innerHTML = rows
+    .map((i, n) => {
+      const tags = [
+        i.vendor === 'apple' ? `<span class="tag">Apple</span>` : '',
+        i.runAtLoad ? `<span class="tag info">${esc(t('startup.runAtLoad'))}</span>` : '',
+        i.keepAlive ? `<span class="tag info">${esc(t('startup.keepAlive'))}</span>` : '',
+        i.disabled ? `<span class="tag">${esc(t('startup.disabled'))}</span>` : ''
+      ].join('');
+      return `<tr>
+        <td><strong>${esc(i.label)}</strong><div style="margin-top:4px">${tags}</div></td>
+        <td><div class="cell-path mono" title="${esc(i.program || '')}">${esc(i.program || '—')}</div>
+            ${i.args && i.args.length ? `<div class="muted cell-path">${esc(i.args.join(' '))}</div>` : ''}</td>
+        <td class="row-muted">${esc(t('startup.scope.' + i.scope))}</td>
+        <td>${startupStatus(i)}</td>
+        <td><div class="cell-actions"><button class="btn ghost sm" data-reveal="${n}">${esc(revealLabel)}</button></div></td>
+      </tr>`;
+    })
+    .join('');
+  body.querySelectorAll('[data-reveal]').forEach((b) =>
+    b.addEventListener('click', () => window.api.openPath(rows[Number(b.dataset.reveal)].file))
+  );
+}
+
+/* ---------- Kimlik koruması: parola oluşturucu ---------- */
+const PW_SETS = {
+  upper: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+  lower: 'abcdefghijklmnopqrstuvwxyz',
+  digits: '0123456789',
+  symbols: '!@#$%^&*()-_=+[]{};:,.?/~'
+};
+const AMBIGUOUS = /[O0Il1|]/g;
+
+// Tarafsız rastgele indeks (modülo yanlılığı olmadan)
+function randomIndex(n) {
+  const buf = new Uint32Array(1);
+  const limit = Math.floor(0x100000000 / n) * n;
+  for (;;) {
+    crypto.getRandomValues(buf);
+    if (buf[0] < limit) return buf[0] % n;
+  }
+}
+
+function pwOptions() {
+  const sets = Object.keys(PW_SETS)
+    .filter((k) => $('#pw-' + k).checked)
+    .map((k) => ($('#pw-ambiguous').checked ? PW_SETS[k].replace(AMBIGUOUS, '') : PW_SETS[k]));
+  return { length: Number($('#pw-length').value) || 20, sets };
+}
+
+function generatePassword() {
+  const { length, sets } = pwOptions();
+  if (!sets.length) {
+    $('#pw-output').value = '';
+    paintStrength();
+    return;
+  }
+  const pool = sets.join('');
+  // Seçilen her türden en az bir karakter, sonra karıştır
+  const chars = sets.map((set) => set[randomIndex(set.length)]);
+  while (chars.length < length) chars.push(pool[randomIndex(pool.length)]);
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = randomIndex(i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  $('#pw-output').value = chars.join('');
+  paintStrength();
+}
+
+function paintStrength() {
+  const { length, sets } = pwOptions();
+  const fill = $('#pw-strength-fill');
+  const label = $('#pw-strength-label');
+  if (!sets.length) {
+    fill.style.width = '0';
+    label.textContent = t('id.gen.noSet');
+    return;
+  }
+  const bits = Math.round(length * Math.log2(sets.join('').length));
+  const level = bits < 40 ? 'weak' : bits < 60 ? 'fair' : bits < 80 ? 'good' : bits < 100 ? 'strong' : 'excellent';
+  const color = { weak: 'var(--danger)', fair: 'var(--warn)', good: 'var(--warn)', strong: 'var(--success)', excellent: 'var(--success)' }[level];
+  fill.style.width = Math.min(100, (bits / 128) * 100) + '%';
+  fill.style.background = color;
+  label.textContent = t('id.strength', { level: t('id.strength.' + level), bits });
+}
+
+$('#pw-generate').addEventListener('click', generatePassword);
+$('#pw-length').addEventListener('input', (e) => {
+  $('#pw-length-value').textContent = e.target.value;
+  generatePassword();
+});
+['upper', 'lower', 'digits', 'symbols', 'ambiguous'].forEach((k) => $('#pw-' + k).addEventListener('change', generatePassword));
+$('#pw-copy').addEventListener('click', async () => {
+  const v = $('#pw-output').value;
+  if (!v) return;
+  try {
+    await navigator.clipboard.writeText(v);
+    toast(t('id.gen.copied'));
+  } catch {
+    $('#pw-output').select();
+  }
+});
+
+/* ---------- Kimlik koruması: sızıntı denetimi ---------- */
+let breachState = null;
+
+function paintBreach(st) {
+  const el = $('#breach-result');
+  el.hidden = false;
+  if (st.checking) {
+    el.className = 'breach-result';
+    el.textContent = t('id.breach.checking');
+  } else if (!st.ok) {
+    el.className = 'breach-result warn';
+    el.textContent = t('id.breach.error', { reason: st.error || '—' });
+  } else if (st.count > 0) {
+    el.className = 'breach-result bad';
+    el.textContent = t('id.breach.found', { n: fmtNum(st.count) });
+  } else {
+    el.className = 'breach-result ok';
+    el.textContent = t('id.breach.clean');
+  }
+}
+
+$('#breach-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = $('#breach-input');
+  const pw = input.value;
+  if (!pw) return;
+  $('#breach-check').disabled = true;
+  breachState = { checking: true };
+  paintBreach(breachState);
+  try {
+    breachState = await window.api.breachCheck(pw);
+  } catch (err) {
+    breachState = { ok: false, error: String((err && err.message) || err) };
+  }
+  input.value = '';
+  $('#breach-check').disabled = false;
+  paintBreach(breachState);
+});
+
 /* ---------- Başlangıç ---------- */
 (async function init() {
   try {
     await loadSettings();
     window.I18N.setLanguage((settings && settings.language) || 'tr');
     window.I18N.applyDom();
+    paintAppearance();
     runtime = await window.api.getRuntime();
+    await refreshDbStatus();
+    await refreshFda();
     await refreshDashboard();
     await loadHistory();
     await loadRules();
-    await refreshDbStatus();
     paintUpdate(await window.api.appVersion());
+    generatePassword();
     await maybeShowFdaOnboarding();
     const m = (location.hash || '').match(/^#(\w+)$/);
     if (m && TITLES[m[1]]) goto(m[1]);
+    else goto('dashboard');
     window.__aegis.ready = true;
+    // macOS'ta salt okunur denetimleri arka planda çalıştır (güvenlik merkezi için)
+    if (runtime && runtime.platform === 'darwin') {
+      runAudit();
+      loadStartup();
+    } else {
+      auditData = { supported: false, items: [] };
+      renderAudit();
+      loadStartup();
+    }
   } catch (err) {
     window.__aegis.errors.push('init: ' + String((err && err.stack) || err));
   }

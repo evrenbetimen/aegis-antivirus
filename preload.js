@@ -45,6 +45,11 @@ contextBridge.exposeInMainWorld('api', {
   openPath: (p) => ipcRenderer.invoke('shell:openPath', p),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 
+  // Güvenlik merkezi
+  auditRun: () => ipcRenderer.invoke('audit:run'),
+  startupList: () => ipcRenderer.invoke('startup:list'),
+  breachCheck: (password) => ipcRenderer.invoke('identity:breach', password),
+
   // Ana süreçten gelen olaylar
   onEvent: (cb) => ipcRenderer.on('event:new', (_e, ev) => cb(ev))
 });

@@ -1,4 +1,4 @@
-// Português (Brasil) — reference dictionary. Every other locale must have exactly these keys.
+// Português (Brasil)
 (function (root) {
   root.AEGIS_LOCALES = root.AEGIS_LOCALES || {};
   root.AEGIS_LOCALES.pt = {

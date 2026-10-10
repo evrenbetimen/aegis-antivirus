@@ -1,4 +1,4 @@
-// Italiano — reference dictionary. Every other locale must have exactly these keys.
+// Italiano
 (function (root) {
   root.AEGIS_LOCALES = root.AEGIS_LOCALES || {};
   root.AEGIS_LOCALES.it = {

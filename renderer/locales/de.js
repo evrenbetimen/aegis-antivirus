@@ -297,7 +297,7 @@
     'scan.stop': "Stoppen",
     'scan.stopped': " · Scan gestoppt",
 
-    'score.label': "Sicherheitsbewertung",
+    'score.label': "Sicherheits\u00ADbewertung",
 
     'set.about': "Über",
     'set.appAuto': "Automatische App-Updates",

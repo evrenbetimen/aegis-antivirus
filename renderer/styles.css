@@ -301,7 +301,7 @@ code { background: var(--surface-3); padding: 1px 6px; border-radius: 5px; font-
 }
 .ring-label { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
 .ring-label strong { font-size: 28px; font-weight: 700; line-height: 1.05; }
-.ring-label span { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; max-width: 80px; }
+.ring-label span { font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; max-width: 78px; margin: 2px auto 0; line-height: 1.25; hyphens: auto; overflow-wrap: anywhere; }
 
 /* ============ İSTATİSTİK KARTLARI ============ */
 .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px; }

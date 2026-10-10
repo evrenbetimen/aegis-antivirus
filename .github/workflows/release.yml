@@ -41,8 +41,14 @@ jobs:
 
       - run: npm ci
 
+      # Evrensel (arm64 + x86_64) C++ motoru; uygulama paketine app.asar.unpacked içinde girer
+      - name: Build C++ engine
+        run: npm run build:native
+
       - name: Unit tests
         run: npm run test:unit
+        env:
+          AEGIS_ENGINE: native
 
       - name: Check tag matches package.json version
         if: github.event_name == 'push'

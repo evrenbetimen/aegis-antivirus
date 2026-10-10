@@ -99,13 +99,33 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
   ```
 
   Özel anahtarı depoya eklemeyin; `db-public.pem`'i ekleyip uygulamayı yeniden paketleyin.
-- **Çoklu dil**: TR/EN (Ayarlar → Dil), tüm statik ve dinamik metinler
+- **Güvenlik merkezi** (Norton/McAfee panosu gibi): kapalı korumaları,
+  eski taramayı, eksik izinleri ve denetim bulgularını tek listede gösterir;
+  her öneri tek tıkla düzeltilir, güvenlik puanı bu listeden hesaplanır
+- **Sistem güvenlik denetimi** (macOS): FileVault, Gatekeeper, SIP, uygulama
+  firewall'u, otomatik güncellemeler, Wi-Fi şifrelemesi ve ekran kilidini
+  salt okunur denetler; düzeltme için ilgili Sistem Ayarları bölmesini açar
+  (`src/sysaudit.js`)
+- **Başlangıç öğeleri**: LaunchAgent/LaunchDaemon kayıtlarını listeler, her
+  programı tarama motorundan geçirir; eksik, geçici klasörde ya da gizli
+  konumda çalışan öğeleri işaretler (`src/startup-items.js`)
+- **Kimlik koruması**: kriptografik parola oluşturucu (güç göstergeli) ve
+  Have I Been Pwned k-anonimlik ile parola sızıntı denetimi; parolanın
+  yalnızca SHA-1 özetinin ilk 5 karakteri gönderilir (`src/breach.js`)
+- **12 dil**: Türkçe, English, Deutsch, Français, Español, Italiano,
+  Português, Nederlands, Polski, Русский, 日本語, 简体中文 ve "Sistem dili"
+  (Ayarlar → Görünüm ve dil). Sözlükler `renderer/locales/`; İngilizce
+  referanstır ve `test/locales.test.js` her dilin aynı anahtar ve yer
+  tutuculara sahip olduğunu denetler
 - **Tarama geçmişi + rapor dışa aktarma**: son 100 tarama (mod, süre, tehdit
   listesi, izin hataları) ve tek tıkla **JSON/CSV** kaydetme
   (Tarama → Tarama geçmişi)
 - **Dashboard**: güvenlik puanı, istatistikler, etkinlik akışı (i18n)
-- **Premium UI**: koyu tema, cam efektli kartlar, macOS gizli başlık çubuğu,
-  üretilmiş uygulama ikonu (`build/icon.icns`, `npm run icon` ile yeniden üretilir)
+- **Kurumsal arayüz, açık ve koyu tema**: sade kartlar, bölümlü kenar
+  çubuğu, macOS gizli başlık çubuğu. Tema "Sistem" (macOS görünümünü izler),
+  "Açık" ya da "Koyu" seçilir; üst çubuktaki düğme ile hızlıca değişir.
+  Renkler `renderer/styles.css` içindeki belirteçlerden gelir. Uygulama
+  ikonu `build/icon.icns` (`npm run icon` ile yeniden üretilir)
 
 ### Evre 2 (native-daemon/) — kod yazıldı, Apple yetkisi bekliyor
 
@@ -116,12 +136,19 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
 
 ## Mimari
 
+Norton ve McAfee'de olduğu gibi katmanlar farklı dillerde yazılmıştır:
+arayüz JavaScript (Electron), tarama motoru **C++17**, macOS sistem
+genişletmeleri **Swift**.
+
 ```
 ┌───────────────────────────────┐
-│ Electron UI (renderer/)       │  ← dashboard, tarama, firewall, i18n
+│ Electron UI (renderer/)       │  ← JavaScript: güvenlik merkezi, tarama, 12 dil
 ├───────────────────────────────┤
-│ Electron main (main.js, src/) │  ← tarama motoru, şifreli karantina,
-│                               │     kural motoru, yem dosyaları, zamanlayıcı
+│ Electron main (main.js, src/) │  ← JavaScript: tarama orkestrasyonu, şifreli
+│                               │     karantina, kural motoru, yem dosyaları
+├───────────────────────────────┤
+│ Tarama motoru (native-engine/)│  ← C++17: YARA derleyici/eşleştirici, SHA-256,
+│   aegis_engine.node, aegis-scan│     komut satırı tarayıcısı (Node-API)
 ├───────────────────────────────┤
 │ Native daemon (native-daemon/ │  ← Endpoint Security + Network Extension
 │   Swift, Evre 2)              │     (Apple yetkisi gerektirir)
@@ -132,7 +159,8 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
 |---|---|
 | Tarama motoru | `src/scanner.js` |
 | Dosya çekirdek tarama + worker | `src/filescan.js`, `src/scan-worker.js` |
-| İmza DB + mini YARA | `src/signatures.js`, `signatures/` |
+| **C++ tarama motoru** (YARA + SHA-256 + CLI) | `native-engine/` ([ayrıntı](native-engine/README.md)) |
+| İmza DB + YARA referans motoru (JS yedek) | `src/signatures.js`, `src/native-engine.js`, `signatures/` |
 | Arşiv tarama | `src/archive.js` |
 | Hash önbelleği | `src/cache.js` |
 | Şifreli karantina | `src/quarantine.js` |
@@ -144,13 +172,19 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
 | Tam Disk Erişimi denetimi | `src/permissions.js` |
 | Uygulama güncellemesi | `src/updater.js` |
 | Native genişletme köprüsü | `src/native-bridge.js` |
+| Sistem güvenlik denetimi | `src/sysaudit.js` |
+| Başlangıç öğeleri | `src/startup-items.js` |
+| Parola sızıntı denetimi | `src/breach.js` |
+| Arayüz dilleri | `renderer/i18n.js`, `renderer/locales/*.js` |
 
 ## Test
 
 - `npm test` → 35 uçtan uca kontrol (tarama, imza, YARA, arşiv, önbellek,
   paralel worker havuzu, şifreli karantina geri yükleme, bütünlük, Keychain
   anahtarı, güncelleme doğrulama, firewall DNS eşleşmesi, tarama geçmişi)
-- `npm run test:unit` → 41 birim test (imza/YARA, önbellek, arşiv)
+- `npm run test:unit` → birim testler (imza/YARA, önbellek, arşiv) + C++ ↔ JS
+  motor fark testi (`AEGIS_ENGINE=native|js` ile iki motorda da çalışır)
+- `npm run test:native` → C++ motoru birim testleri (CMake/ctest)
 - `test/bench-scan.js` → paralel tarama hız karşılaştırması
 - Tarama sayfasındaki **"EICAR test dosyası oluştur"** düğmesi: tarama bunu
   `EICAR-Test-File` olarak bulup karantinaya almalıdır. (Bu makinede Avast
@@ -206,8 +240,8 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
 11. **.dmg/.pkg kurulum paketi taraması** — hdiutil ile bağlama desteği yok
 12. **Tarama önbelleği için değişen dosya imzası (ssdeep benzeri)** — parçalı
     hash ile hızlı yaklaşık eşleşme
-13. **Uygulama/HTML ikinci dil testi + çevirinin tam senkronu** — TR/EN
-    eklendi; üçüncü dil için sözlük genişletilmeli
+13. ✅ **Çok dilli arayüz** — 12 dil; eksik ya da fazla anahtar ve bozuk
+    yer tutucu birim testinde yakalanır
 14. ✅ **Etkinlik kaydı dışa aktarma** (JSON/CSV) — Etkinlik sayfasından;
     CSV hücreleri formül enjeksiyonuna karşı korunur (tarama geçmişi dahil)
 

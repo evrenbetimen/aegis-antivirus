@@ -20,6 +20,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const native = require('./native-engine');
 
 /* ------------------------------------------------------------------ *
  * Tunables
@@ -143,7 +144,7 @@ function tokenize(text) {
     if (/[A-Za-z_]/.test(c)) {
       let j = i;
       while (j < n && /[A-Za-z0-9_]/.test(text[j])) j += 1;
-      tokens.push({ t: 'word', v: text.slice(i, j) });
+      tokens.push({ t: 'word', v: text.slice(i, j), s: i });
       i = j;
       continue;
     }
@@ -169,7 +170,7 @@ function tokenize(text) {
       continue;
     }
 
-    tokens.push({ t: 'punct', v: c });
+    tokens.push({ t: 'punct', v: c, e: i + 1 });
     i += 1;
   }
 
@@ -729,7 +730,7 @@ function findRuleEnd(tokens, from) {
   return -1;
 }
 
-function parseRule(tokens, start) {
+function parseRule(tokens, start, text) {
   let pos = start + 1;
 
   const nameTok = tokens[pos];
@@ -752,6 +753,8 @@ function parseRule(tokens, start) {
   const rule = { name, strings: [], condition: null };
   parseSections(tokens, pos + 1, end, rule);
   resolveCondition(rule);
+  // Kuralın kaynak metni: C++ motoru aynı kuralı buradan derler (bkz. nativeRulesFor)
+  Object.defineProperty(rule, 'source', { value: text.slice(tokens[start].s, tokens[end].e), enumerable: false });
   return { rule, end: end + 1 };
 }
 
@@ -783,7 +786,7 @@ function parseYara(text) {
     const tok = tokens[i];
     if (tok.t === 'word' && tok.v === 'rule') {
       try {
-        const parsed = parseRule(tokens, i);
+        const parsed = parseRule(tokens, i, text);
         rules.push(parsed.rule);
         i = parsed.end;
       } catch (err) {
@@ -1059,7 +1062,57 @@ function ruleMatches(rule, ctx) {
  * @param {{filesize?:number, headLength?:number}} [opts] real file size and
  *   how many leading bytes sit at their real file offset
  */
+/* ------------------------------------------------------------------ *
+ * C++ motoru: aynı kural listesi native-engine/ içinde derlenir ve
+ * eşleştirme orada yapılır. Bu dosyadaki JS eşleştirici referans
+ * uygulama ve yedek olarak kalır.
+ * ------------------------------------------------------------------ */
+
+const nativeCache = new WeakMap(); // rules dizisi → { snapshot, set }
+const engineStats = { nativeMatches: 0, jsMatches: 0, fallbacks: 0 };
+
+// Kural listesinin C++ derlemesi; listede kaynak metni olmayan (elle
+// kurulmuş) kural varsa ya da iki derleyici farklı sonuç verirse null.
+function nativeRulesFor(rules) {
+  if (!native.available) return null;
+  const cached = nativeCache.get(rules);
+  if (cached && cached.snapshot.length === rules.length && cached.snapshot.every((r, i) => r === rules[i])) {
+    return cached.set;
+  }
+  let set = null;
+  if (rules.every((r) => r && typeof r.source === 'string')) {
+    try {
+      const candidate = new native.binding.RuleSet(rules.map((r) => r.source).join('\n'));
+      const names = candidate.names();
+      if (names.length === rules.length && names.every((n, i) => n === rules[i].name)) set = candidate;
+    } catch {
+      set = null;
+    }
+  }
+  if (!set) engineStats.fallbacks += 1;
+  nativeCache.set(rules, { snapshot: rules.slice(), set });
+  return set;
+}
+
+function matchRulesNative(set, buffer, rules, opts) {
+  const o = opts || {};
+  const filesize = Number.isFinite(o.filesize) ? o.filesize : buffer.length;
+  const head = Number.isFinite(o.headLength) ? Math.min(o.headLength, buffer.length) : buffer.length;
+  const idx = set.match(buffer, filesize, head);
+  engineStats.nativeMatches += 1;
+  return idx >= 0 ? { name: rules[idx].name, kind: 'yara' } : null;
+}
+
 function matchRules(buffer, rules, opts) {
+  if (!Array.isArray(rules) || rules.length === 0 || buffer.length === 0) return null;
+  const set = nativeRulesFor(rules);
+  if (set) return matchRulesNative(set, buffer, rules, opts);
+  engineStats.jsMatches += 1;
+  return matchRulesJs(buffer, rules, opts);
+}
+
+// JS referans eşleştiricisi (C++ motoru yoksa ya da karşılaştırma testlerinde)
+function matchRulesJs(buffer, rules, opts) {
   if (!Array.isArray(rules) || rules.length === 0 || buffer.length === 0) return null;
   const ctx = makeMatchContext(buffer, opts);
   for (const rule of rules) {
@@ -1098,6 +1151,7 @@ function shaLookup(map, hash) {
 
 // Synchronous full-file hashing in 1MB chunks (bounded memory).
 function hashFileSync(filePath) {
+  if (native.nativeHashing) return native.binding.sha256FileSync(filePath);
   const hash = crypto.createHash('sha256');
   const fd = fs.openSync(filePath, 'r');
   try {
@@ -1256,7 +1310,7 @@ function checkBuffer(buffer, db) {
   const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
 
   if (shaMapSize(db.sha256) > 0) {
-    const hash = crypto.createHash('sha256').update(buf).digest('hex');
+    const hash = native.nativeHashing ? native.binding.sha256(buf) : crypto.createHash('sha256').update(buf).digest('hex');
     const shaName = shaLookup(db.sha256, hash);
     if (shaName) return { name: shaName, kind: 'sha256' };
   }
@@ -1292,7 +1346,22 @@ function checkStrings(filePath, db) {
   }
 }
 
+/** Hangi motorun kullanıldığı (arayüz ve testler için). */
+function engineInfo() {
+  return {
+    engine: native.available ? 'native' : 'js',
+    language: native.available ? 'C++' : 'JavaScript',
+    version: native.version,
+    mode: native.mode,
+    loadError: native.loadError,
+    stats: Object.assign({}, engineStats)
+  };
+}
+
 module.exports = {
+  engineInfo,
+  matchRules,
+  matchRulesJs,
   load,
   checkFile,
   checkBuffer,

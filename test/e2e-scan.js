@@ -49,6 +49,14 @@ app.whenReady().then(async () => {
 
   // ---------- Yeni modüllerin bağımsız doğrulaması ----------
 
+  // 0) Tarama motoru (CI'da Electron içinde C++ eklentisi zorunlu)
+  const engine = signatures.engineInfo();
+  if (process.env.AEGIS_ENGINE === 'native') {
+    check('C++ tarama motoru Electron içinde yüklendi', engine.engine === 'native', `${engine.language} ${engine.version}`);
+  } else {
+    console.log(`INFO  tarama motoru: ${engine.language} ${engine.version || ''}`);
+  }
+
   // A) İmza veritabanı
   let db = null;
   try {

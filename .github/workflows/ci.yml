@@ -26,9 +26,46 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: C++ motorunu derle (Node-API eklentisi)
+        run: npm run build:native
       - name: Sözdizimi denetimi
         run: for f in main.js preload.js src/*.js renderer/*.js scripts/*.js test/*.js; do node --check "$f"; done
-      - run: npm run test:unit
+      - name: Birim testleri (C++ motoru)
+        run: npm run test:unit
+        env:
+          AEGIS_ENGINE: native
+      - name: Birim testleri (JS referans motoru)
+        run: npm run test:unit
+        env:
+          AEGIS_ENGINE: js
+
+  engine:
+    name: C++ motoru — CMake, sanitizer, CLI (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Derle (AddressSanitizer + UBSan)
+        run: |
+          cmake -S native-engine -B native-engine/build-asan -DCMAKE_BUILD_TYPE=Debug -DAEGIS_SANITIZE=ON
+          cmake --build native-engine/build-asan --parallel
+      - name: C++ birim testleri
+        run: ctest --test-dir native-engine/build-asan --output-on-failure
+      - name: aegis-scan duman testi
+        run: |
+          mkdir -p "$RUNNER_TEMP/scan/sub"
+          printf 'x AEGIS-TEST-MARKER-V1\n' > "$RUNNER_TEMP/scan/sub/marker.txt"
+          printf 'temiz\n' > "$RUNNER_TEMP/scan/clean.txt"
+          set +e
+          native-engine/build-asan/aegis-scan --json --db signatures "$RUNNER_TEMP/scan" | tee "$RUNNER_TEMP/out.jsonl"
+          code=${PIPESTATUS[0]}
+          set -e
+          test "$code" -eq 1
+          grep -q '"threat":"Demo_Test_Marker"' "$RUNNER_TEMP/out.jsonl"
+          grep -q '"summary":true,"files":2,' "$RUNNER_TEMP/out.jsonl"
 
   e2e:
     name: Uçtan uca test (Electron)
@@ -40,8 +77,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: e2e (Xvfb)
+      - run: npm run build:native
+      - name: e2e (Xvfb, Electron içinde C++ motoru)
         run: env -u NODE_OPTIONS xvfb-run -a ./node_modules/.bin/electron --no-sandbox test/e2e-scan.js
+        env:
+          AEGIS_ENGINE: native
 
   audit:
     name: Bağımlılık güvenlik denetimi

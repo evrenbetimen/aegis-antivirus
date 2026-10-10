@@ -19,7 +19,8 @@ const DEFAULTS = {
     realtimeEnabled: false, // native daemon gerektirir
     exclusions: [],
     // Yeni nesil özellikler
-    language: 'tr', // 'tr' | 'en'
+    language: 'tr', // validate.LANGUAGES ('system' = işletim sistemi dili)
+    theme: 'system', // 'system' | 'light' | 'dark'
     scheduledScan: false,
     scanIntervalHours: 24,
     honeypotEnabled: true, // fidye yem dosyaları

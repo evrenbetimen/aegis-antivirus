@@ -8,13 +8,22 @@ test('ayar yaması: bilinmeyen anahtar ve yanlış tip atılır', () => {
     autoQuarantine: 'evet',
     heuristics: false,
     __proto__x: 1,
-    language: 'de',
+    language: 'klingon',
+    theme: 'neon',
     exclusions: 'yol',
     dbUrl: ' https://x/db.json '
   });
   assert.deepEqual(out, { heuristics: false, dbUrl: 'https://x/db.json' });
   assert.deepEqual(sanitizeSettingsPatch(null), {});
   assert.deepEqual(sanitizeSettingsPatch([1]), {});
+});
+
+test('ayar yaması: desteklenen diller ve temalar kabul edilir', () => {
+  for (const language of ['system', 'tr', 'en', 'de', 'fr', 'es', 'it', 'pt', 'nl', 'pl', 'ru', 'ja', 'zh']) {
+    assert.deepEqual(sanitizeSettingsPatch({ language }), { language });
+  }
+  for (const theme of ['system', 'light', 'dark']) assert.deepEqual(sanitizeSettingsPatch({ theme }), { theme });
+  assert.deepEqual(sanitizeSettingsPatch({ language: 'EN', theme: 'Dark' }), {});
 });
 
 test('ayar yaması: tarama aralığı 1-168 saate sıkıştırılır', () => {

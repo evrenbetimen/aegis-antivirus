@@ -6,17 +6,22 @@
   "scripts": {
     "start": "env -u NODE_OPTIONS electron .",
     "test": "env -u NODE_OPTIONS electron test/e2e-scan.js",
-    "test:unit": "node --test test/signatures.test.js test/archive.test.js test/cache.test.js test/dbupdate.test.js test/validate.test.js test/yara-engine.test.js test/build-db.test.js test/permissions.test.js test/updater.test.js test/native-bridge.test.js",
+    "test:unit": "node --test test/signatures.test.js test/archive.test.js test/cache.test.js test/dbupdate.test.js test/validate.test.js test/yara-engine.test.js test/build-db.test.js test/permissions.test.js test/updater.test.js test/native-bridge.test.js test/native-engine.test.js test/features.test.js test/locales.test.js",
     "icon": "env -u NODE_OPTIONS electron scripts/make-icon.js",
     "bench": "env -u NODE_OPTIONS electron test/bench-scan.js",
     "dist": "electron-builder --mac --publish never",
-    "release": "electron-builder --mac --publish always"
+    "release": "electron-builder --mac --publish always",
+    "postinstall": "node scripts/build-native.js",
+    "build:native": "node scripts/build-native.js --strict",
+    "build:cli": "cmake -S native-engine -B native-engine/build-cmake && cmake --build native-engine/build-cmake --config Release",
+    "test:native": "npm run build:cli && ctest --test-dir native-engine/build-cmake --output-on-failure"
   },
   "author": "Aegis Security",
   "license": "MIT",
   "devDependencies": {
     "electron": "^44.5.1",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "node-gyp": "^11.5.0"
   },
   "build": {
     "appId": "com.aegis.antivirus",
@@ -36,14 +41,19 @@
       "src/**/*",
       "renderer/**/*",
       "signatures/**/*",
-      "build/icon.*"
+      "build/icon.*",
+      "native-engine/build/Release/aegis_engine.node"
     ],
     "publish": {
       "provider": "github",
       "owner": "evrenbetimen",
       "repo": "aegis-antivirus",
       "releaseType": "release"
-    }
+    },
+    "asarUnpack": [
+      "native-engine/build/Release/aegis_engine.node"
+    ],
+    "npmRebuild": false
   },
   "dependencies": {
     "electron-updater": "^6.8.9"

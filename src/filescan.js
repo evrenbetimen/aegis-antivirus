@@ -10,6 +10,7 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const signatures = require('./signatures');
+const native = require('./native-engine');
 
 /**
  * DİKKAT: EICAR test dizgisi bu dosyada HAM metin olarak BULUNMAZ.
@@ -25,6 +26,8 @@ const EICAR = String.fromCharCode(
 );
 
 function hashFile(file) {
+  // C++ motoru (macOS CommonCrypto) dosyayı libuv iş parçacığı havuzunda özetler
+  if (native.nativeHashing) return native.binding.sha256File(file);
   return new Promise((resolve, reject) => {
     const h = crypto.createHash('sha256');
     const s = fs.createReadStream(file);

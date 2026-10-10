@@ -8,3 +8,7 @@ test/*.png
 
 # İmza DB yayıncı özel anahtarı — asla depoya eklenmez
 *signing-key*.pem
+
+# C++ motor derleme çıktıları
+native-engine/build/
+native-engine/build-*/

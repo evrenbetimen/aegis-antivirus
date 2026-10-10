@@ -17,6 +17,10 @@ const SETTING_TYPES = {
   appAutoUpdate: 'boolean'
 };
 
+// Arayüz dilleri (renderer/locales/*.js ile aynı liste); 'system' → işletim sistemi dili
+const LANGUAGES = ['system', 'tr', 'en', 'de', 'fr', 'es', 'it', 'pt', 'nl', 'pl', 'ru', 'ja', 'zh'];
+const THEMES = ['system', 'light', 'dark'];
+
 const MAX_EXCLUSIONS = 200;
 const MAX_RULES = 500;
 
@@ -31,7 +35,9 @@ function sanitizeSettingsPatch(patch) {
     if (SETTING_TYPES[k]) {
       if (typeof v === SETTING_TYPES[k]) out[k] = v;
     } else if (k === 'language') {
-      if (v === 'tr' || v === 'en') out[k] = v;
+      if (LANGUAGES.includes(v)) out[k] = v;
+    } else if (k === 'theme') {
+      if (THEMES.includes(v)) out[k] = v;
     } else if (k === 'scanIntervalHours') {
       const n = Number(v);
       if (Number.isFinite(n)) out[k] = Math.min(168, Math.max(1, Math.round(n)));
@@ -90,4 +96,4 @@ function sanitizeRules(rules) {
   return out;
 }
 
-module.exports = { sanitizeSettingsPatch, sanitizeRules };
+module.exports = { sanitizeSettingsPatch, sanitizeRules, LANGUAGES, THEMES };

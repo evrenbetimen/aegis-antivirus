@@ -7,6 +7,7 @@ const { app } = require('electron');
 const signatures = require('./signatures');
 const { HashCache } = require('./cache');
 const { scanFileCore, EICAR } = require('./filescan');
+const phishing = require('./phishing');
 
 // Arşiv modülü (varsa) — yoksa arşiv taraması devre dışı kalır
 let archive = null;
@@ -391,7 +392,16 @@ async function runScan(opts, onProgress) {
       }
     }
 
-    // --- 5) Sezgisel tarama (varsayılan olarak karantinaya ALINMAZ) ---
+    // --- 5) Kimlik avı bağlantıları (kısayol, web sayfası, e-posta dosyaları) ---
+    if (opts.webLinks !== false && phishing.isLinkFile(file) && stat.size <= LINK_FILE_MAX) {
+      const link = checkLinkFile(file, db);
+      if (link) {
+        report.threats.push(await handleThreat(file, Object.assign({ hash }, link), opts));
+        return;
+      }
+    }
+
+    // --- 6) Sezgisel tarama (varsayılan olarak karantinaya ALINMAZ) ---
     if (opts.heuristics) {
       const heur = await checkHeuristic(file, stat.size, file);
       if (heur) report.threats.push(heur);
@@ -498,16 +508,52 @@ async function scanArchiveFile(file, db, opts, report, emit) {
   if (!hit || stopFlag) return null;
   return await handleThreat(
     `${file}!${hit.entry}`,
-    { kind: 'signature', threat: hit.name, detail: `Arşiv içi eşleşme (${hit.kind})`, hash: null, inArchive: true },
+    { kind: hit.kind === 'phishing' ? 'phishing' : 'signature', threat: hit.name, detail: `Arşiv içi eşleşme (${hit.kind})`, hash: null, inArchive: true },
     opts
   );
 }
 
-function checkBufferHit(buf, db) {
+function checkBufferHit(buf, db, name) {
   const b = signatures.checkBuffer(buf, db);
   if (b) return { name: b.name, kind: b.kind };
   if (buf.length <= 2048 && buf.toString('utf8').includes(EICAR)) return { name: 'EICAR-Test-File', kind: 'eicar' };
+  if (name && phishing.isLinkFile(name)) {
+    const hit = phishing.findListedHost(buf.toString('utf8'), db.domains);
+    if (hit) return { name: linkThreatName(hit), kind: 'phishing' };
+  }
   return null;
+}
+
+const LINK_FILE_MAX = 5 * 1024 * 1024;
+
+function linkThreatName(hit) {
+  return hit.kind === 'malware' ? 'Malware.Link' : 'Phishing.Link';
+}
+
+/** Bağlantı taşıyan dosyada listelenmiş (kimlik avı / zararlı) alan adı arar. */
+function checkLinkFile(file, db) {
+  if (!db.domains || (!db.domains.phishing && !db.domains.malware)) return null;
+  let text;
+  try {
+    const fd = fs.openSync(file, 'r');
+    try {
+      const buf = Buffer.alloc(Math.min(fs.fstatSync(fd).size, 2 * 1024 * 1024));
+      fs.readSync(fd, buf, 0, buf.length, 0);
+      text = buf.toString('utf8');
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return null;
+  }
+  const hit = phishing.findListedHost(text, db.domains);
+  if (!hit) return null;
+  return {
+    kind: 'phishing',
+    threat: linkThreatName(hit),
+    detail: `${hit.kind === 'malware' ? 'Zararlı yazılım' : 'Kimlik avı'} bağlantısı: ${hit.host}`,
+    host: hit.host
+  };
 }
 
 async function scanArchiveLayer(diskPath, label, depth, db, report, emit, ctx) {
@@ -525,7 +571,7 @@ async function scanArchiveLayer(diskPath, label, depth, db, report, emit, ctx) {
       report.archiveEntries++;
       report.bytesScanned += buf.length;
       if (emit) emit(`${label}!${entry.name}`);
-      const h = checkBufferHit(buf, db);
+      const h = checkBufferHit(buf, db, entry.name);
       if (h) {
         hit = Object.assign(h, { entry: entry.name });
         return buf.length;
@@ -587,7 +633,8 @@ async function handleThreat(file, meta, opts) {
   };
   // Politika: yalnızca kesin imza/EICAR tespitleri otomatik karantinaya alınır.
   // Sezgisel bulgular yalnızca işaretlenir (kullanıcı onayı gerekir).
-  const auto = opts.autoQuarantine && meta.kind !== 'heuristic';
+  // Bağlantı bulguları da (kimlik avı) yalnızca işaretlenir: dosyanın kendisi zararsızdır.
+  const auto = opts.autoQuarantine && meta.kind !== 'heuristic' && meta.kind !== 'phishing';
   // Arşiv içi bulgu ("arsiv.zip!girdi") diskte ayrı dosya değildir; yolunda
   // "!" geçen gerçek dosyalar (ör. "indir!.exe") yine karantinaya alınır.
   if (auto && !meta.inArchive) {

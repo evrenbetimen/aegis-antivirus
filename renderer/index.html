@@ -481,6 +481,20 @@
               </ul>
             </div>
           </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h3 data-i18n="id.link.title">Bağlantı denetleyici</h3>
+              <span class="muted" id="link-db"></span>
+            </div>
+            <p class="muted block-sub" data-i18n="id.link.sub">Bir e-postadaki ya da mesajdaki bağlantıyı açmadan önce denetleyin. Denetim cihazınızda yapılır; adres hiçbir yere gönderilmez.</p>
+            <form class="pw-output" id="link-form" autocomplete="off">
+              <input class="text-input mono" id="link-input" data-i18n-placeholder="id.link.placeholder" placeholder="https://…" spellcheck="false" />
+              <button class="btn primary sm" type="submit" id="link-check" data-i18n="id.link.check">Denetle</button>
+            </form>
+            <div class="breach-result" id="link-result" hidden></div>
+            <ul class="link-reasons" id="link-reasons" hidden></ul>
+          </div>
         </section>
 
         <!-- ===== ETKİNLİK ===== -->
@@ -535,6 +549,10 @@
                   <label class="setting">
                     <div><strong data-i18n="set.archives">Arşiv taraması</strong><span data-i18n="set.archives.sub">zip/tar/gz içeriğini de tara</span></div>
                     <span class="switch"><input type="checkbox" id="set-archives" checked><span class="slider"></span></span>
+                  </label>
+                  <label class="setting">
+                    <div><strong data-i18n="set.web">Web koruması</strong><span data-i18n="set.web.sub">Taranan dosyalardaki bağlantıları kimlik avı listesiyle denetle</span></div>
+                    <span class="switch"><input type="checkbox" id="set-web" checked><span class="slider"></span></span>
                   </label>
                   <label class="setting">
                     <div><strong data-i18n="set.notifications">Bildirimler</strong><span data-i18n="set.notifications.sub">Tehdit bulunduğunda sistem bildirimi göster</span></div>

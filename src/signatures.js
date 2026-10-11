@@ -1223,6 +1223,7 @@ function load(signaturesDir) {
     updated: 0,
     sha256: new Map(),
     rules: [],
+    domains: { phishing: '', malware: '' },
     source: { dir, dbFile: null, rulesFile: null, loadedAt: Date.now() },
     skipped: []
   };
@@ -1240,6 +1241,12 @@ function load(signaturesDir) {
             result.sha256.set(key.trim().toLowerCase(), value);
           }
         }
+      }
+      // Kimlik avı / zararlı alan adı listeleri (src/phishing.js biçimi)
+      if (json.domains && typeof json.domains === 'object') {
+        const valid = (v) => (typeof v === 'string' && v.length % 11 === 0 && /^[A-Za-z0-9_-]*$/.test(v) ? v : '');
+        result.domains.phishing = valid(json.domains.phishing);
+        result.domains.malware = valid(json.domains.malware);
       }
       result.source.dbFile = dbPath;
       // Yayınlanan DB, YARA kurallarını da imzalı db.json içinde taşır

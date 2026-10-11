@@ -17,6 +17,7 @@ const { Scheduler } = require('./src/scheduler');
 const sysaudit = require('./src/sysaudit');
 const startupItems = require('./src/startup-items');
 const breach = require('./src/breach');
+const phishing = require('./src/phishing');
 
 // Paketle gelen imzalar app.asar içinde (salt okunur); tarama ve güncellemeler
 // kullanıcı dizinindeki kopyayı kullanır (bkz. dbupdate.prepareSignaturesDir).
@@ -289,6 +290,7 @@ function startScan(payload) {
         heuristics: settings.heuristics,
         autoQuarantine: settings.autoQuarantine,
         scanArchives: settings.scanArchives,
+        webLinks: settings.webProtection !== false,
         exclusions: settings.exclusions || [],
         signaturesDir: SIGNATURES_DIR,
         cacheFile: CACHE_FILE
@@ -559,6 +561,25 @@ ipcMain.handle('startup:list', () => {
 
 // Parola yalnızca SHA-1 önekiyle (k-anonimlik) sorgulanır; hiçbir yere yazılmaz
 ipcMain.handle('identity:breach', (_e, password) => breach.checkPassword(password));
+
+// Kimlik avı listesi büyük (~4 MB): DB dosyası değişene kadar bellekte tutulur
+let linkDbCache = { mtime: -1, domains: null };
+function linkDomains() {
+  let mtime = 0;
+  try {
+    mtime = fs.statSync(path.join(SIGNATURES_DIR, 'db.json')).mtimeMs;
+  } catch {}
+  if (linkDbCache.mtime !== mtime) {
+    linkDbCache = { mtime, domains: signatures.load(SIGNATURES_DIR).domains };
+  }
+  return linkDbCache.domains;
+}
+ipcMain.handle('identity:link', (_e, url) => {
+  const domains = linkDomains();
+  const res = phishing.checkUrl(typeof url === 'string' ? url.slice(0, 4096) : '', domains);
+  res.listSize = phishing.listSize(domains.phishing) + phishing.listSize(domains.malware);
+  return res;
+});
 
 ipcMain.handle('update:status', () => updater.status());
 ipcMain.handle('update:check', () => updater.check());

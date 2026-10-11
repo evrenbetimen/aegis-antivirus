@@ -15,6 +15,7 @@ const DEFAULTS = {
     heuristics: true,
     notifications: true,
     scanArchives: true, // arşiv içi tarama
+    webProtection: true, // kimlik avı bağlantı denetimi (dosyalar + firewall)
     firewallEnabled: true,
     realtimeEnabled: false, // native daemon gerektirir
     exclusions: [],

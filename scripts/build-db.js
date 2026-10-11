@@ -6,6 +6,8 @@
 //     [--mb-csv <MalwareBazaar CSV yolu|url>] \
 //     [--yara-dir <dizin> [--yara-match <düzenli ifade>]]... [--max-hashes 100000]
 //     [--rule-sources signatures/rule-sources.json --rule-cache <dizin>]
+//     [--phishing-list <dosya|url>] [--urlhaus-hosts <dosya|url>]
+//     [--popular-domains <dosya|url> [--popular-top 100000]]
 //
 // - SHA-256: MalwareBazaar "recent" CSV dışa aktarımı (abuse.ch, CC0).
 //   Önceki yayınla birleştirilir; en yeni --max-hashes kayıt tutulur (kayan pencere).
@@ -15,6 +17,12 @@
 //   bırakmak için); yalnız
 //   Aegis motorunun TAM desteklediği ve en az bir dizgiye dayanan kurallar alınır
 //   (desteklenmeyen kural asla yanlış değerlendirilmez, ayrıca boyut da küçülür).
+// - Alan adları: kimlik avı listesi (Phishing.Database, MIT) ve URLhaus host
+//   listesi (abuse.ch, CC0), src/phishing.js'in özet biçiminde. Popüler alan
+//   adları (--popular-domains, ör. Cisco Umbrella top-1m) ve paylaşımlı
+//   barındırma kökleri listeden çıkarılır: bu listeler ele geçirilmiş meşru
+//   siteleri de içerir ve tüm bir platformu engellemek yanlış pozitiftir.
+//   Kaynak alınamazsa önceki yayının listesi korunur.
 // - Çıktı: <out>/db.json (yara metni db.json içine gömülür → tek imzalı dosya).
 //   İmzalamak için: node scripts/sign-db.js <out>/db.json <özel-anahtar>
 //
@@ -22,10 +30,11 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const signatures = require('../src/signatures');
+const phishing = require('../src/phishing');
 const { validateDb } = require('../src/dbupdate');
 
 const EICAR_SHA256 = '275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f';
-const MAX_DB_BYTES = 18 * 1024 * 1024; // uygulama 20MB üstünü reddeder
+const MAX_DB_BYTES = 36 * 1024 * 1024; // uygulama 40MB üstünü reddeder
 
 function parseArgs(argv) {
   const out = { yaraDirs: [], maxHashes: 100000 }; // ~100 bayt/kayıt → ~10MB
@@ -44,6 +53,10 @@ function parseArgs(argv) {
     else if (a === '--rule-sources') (out.ruleSources = v), i++;
     else if (a === '--rule-cache') (out.ruleCache = v), i++;
     else if (a === '--max-hashes') (out.maxHashes = Number(v)), i++;
+    else if (a === '--phishing-list') (out.phishingList = v), i++;
+    else if (a === '--urlhaus-hosts') (out.urlhausHosts = v), i++;
+    else if (a === '--popular-domains') (out.popularDomains = v), i++;
+    else if (a === '--popular-top') (out.popularTop = Number(v)), i++;
     else if (a === '--version') (out.version = v), i++;
     else throw new Error('Bilinmeyen argüman: ' + a);
   }
@@ -246,6 +259,63 @@ function fetchRuleSources(file, cacheDir) {
   });
 }
 
+// Paylaşımlı barındırma/platform kökleri: alt alan adları listelenebilir,
+// kökün kendisi asla (sites.google.com tüm Google Sites demektir)
+const PLATFORM_ROOTS = new Set([
+  'sites.google.com', 'docs.google.com', 'drive.google.com', 'forms.gle', 'storage.googleapis.com',
+  'firebasestorage.googleapis.com', 'googleapis.com', 'appspot.com', 'web.app', 'firebaseapp.com',
+  'blogspot.com', 'github.io', 'githubusercontent.com', 'gitlab.io', 'vercel.app', 'netlify.app',
+  'pages.dev', 'workers.dev', 'r2.dev', 'herokuapp.com', 'glitch.me', 'replit.app', 'repl.co',
+  'azurewebsites.net', 'blob.core.windows.net', 'web.core.windows.net', 'amazonaws.com',
+  's3.amazonaws.com', 'cloudfront.net', 'ipfs.io', 'dweb.link', 'sharepoint.com', 'onedrive.live.com',
+  '1drv.ms', 'dropbox.com', 'dropboxusercontent.com', 'notion.site', 'webflow.io', 'framer.app',
+  'framer.website', 'wixsite.com', 'weebly.com', 'weeblysite.com', 'square.site', 'godaddysites.com',
+  'mybluehost.me', '000webhostapp.com', 'duckdns.org', 'ngrok.io', 'ngrok-free.app', 'linktr.ee',
+  'canva.site', 'my.canva.site', 'translate.goog', 'bit.ly', 'tinyurl.com', 't.co', 'l.instagram.com',
+  'l.facebook.com', 'lm.facebook.com', 'cdn.ampproject.org', 'gravatar.com', 'telegra.ph'
+]);
+
+/** Satır başına alan adı (veya URL) listesi; "#" yorum, hosts biçimi de olur. */
+function parseDomainList(text) {
+  const out = [];
+  for (const raw of String(text).split(/\r?\n/)) {
+    let line = raw.replace(/#.*$/, '').trim();
+    if (!line) continue;
+    const parts = line.split(/[\s,]+/);
+    // hosts biçimi ("0.0.0.0 alan.adi") ve Umbrella CSV ("1,alan.adi")
+    line = parts.length > 1 && /^(\d+|0\.0\.0\.0|127\.0\.0\.1)$/.test(parts[0]) ? parts[1] : parts[0];
+    if (/^[a-z]+:\/\//i.test(line)) {
+      try {
+        line = new URL(line).hostname;
+      } catch {
+        continue;
+      }
+    }
+    const h = phishing.normalizeHost(line);
+    if (h && h !== 'localhost' && !/^\d+(\.\d+){3}$/.test(h)) out.push(h);
+  }
+  return out;
+}
+
+async function domainList(src, label, popular, previousList) {
+  if (!src) return null;
+  try {
+    const all = parseDomainList(await readSource(src));
+    // Üst alan adı da eşleştiği için popüler bir sitenin üst alan adı
+    // (ör. s3.us-west-2.amazonaws.com) listede kalırsa o sitenin tamamı düşer
+    const kept = all.filter(
+      (d) => !PLATFORM_ROOTS.has(d) && !popular.has(d) && !popular.has(d.replace(/^www\./, '')) && !popular.parents.has(d)
+    );
+    if (!kept.length) throw new Error('liste boş');
+    const list = phishing.buildList(kept);
+    return { list, count: phishing.listSize(list), dropped: all.length - kept.length };
+  } catch (err) {
+    console.warn(`::warning::${label} alınamadı, önceki liste korunuyor:`, err.message);
+    const list = phishing.validList(previousList || '');
+    return list ? { list, count: phishing.listSize(list), dropped: 0, stale: true } : null;
+  }
+}
+
 function defaultVersion(now = new Date()) {
   const p = (n) => String(n).padStart(2, '0');
   return `${now.getUTCFullYear()}.${now.getUTCMonth() + 1}.${now.getUTCDate()}.${p(now.getUTCHours())}${p(now.getUTCMinutes())}`;
@@ -253,9 +323,12 @@ function defaultVersion(now = new Date()) {
 
 async function build(opts) {
   let previous = {};
+  let previousDomains = {};
   if (opts.previous) {
     try {
-      previous = JSON.parse(await readSource(opts.previous)).sha256 || {};
+      const prev = JSON.parse(await readSource(opts.previous));
+      previous = prev.sha256 || {};
+      previousDomains = prev.domains || {};
     } catch (err) {
       console.warn('Önceki DB okunamadı, sıfırdan başlanıyor:', err.message);
     }
@@ -275,6 +348,23 @@ async function build(opts) {
   if (opts.ruleSources) yaraDirs.push(...fetchRuleSources(opts.ruleSources, opts.ruleCache));
   const yara = collectYara(yaraDirs);
 
+  let popular = new Set();
+  popular.parents = new Set();
+  if (opts.popularDomains) {
+    try {
+      popular = new Set(parseDomainList(await readSource(opts.popularDomains)).slice(0, opts.popularTop || 100000));
+    } catch (err) {
+      console.warn('::warning::Popüler alan adı listesi alınamadı:', err.message);
+    }
+    popular.parents = new Set();
+    for (const d of popular) {
+      const labels = d.split('.');
+      for (let i = 1; i < labels.length - 1; i++) popular.parents.add(labels.slice(i).join('.'));
+    }
+  }
+  const phish = await domainList(opts.phishingList, 'Kimlik avı listesi', popular, previousDomains.phishing);
+  const malware = await domainList(opts.urlhausHosts, 'URLhaus', popular, previousDomains.malware);
+
   const db = {
     version: opts.version || defaultVersion(),
     updated: Date.now(),
@@ -286,9 +376,12 @@ async function build(opts) {
         const out = { name: n.source, license: n.license, rules: n.rules };
         if (n.url) Object.assign(out, { url: n.url, commit: n.commit, spdx: n.spdx });
         return out;
-      })
+      }),
+      ...(phish ? [{ name: 'Phishing.Database', url: 'https://github.com/mitchellkrogza/Phishing.Database', license: 'MIT', domains: phish.count }] : []),
+      ...(malware ? [{ name: 'URLhaus (abuse.ch)', url: 'https://urlhaus.abuse.ch', license: 'CC0', domains: malware.count }] : [])
     ]
   };
+  if (phish || malware) db.domains = { phishing: phish ? phish.list : '', malware: malware ? malware.list : '' };
   const err = validateDb(db);
   if (err) throw new Error('Şema hatası: ' + err);
   const json = JSON.stringify(db);
@@ -300,10 +393,20 @@ async function build(opts) {
   const loaded = signatures.load(opts.out);
   if (loaded.skipped.length) throw new Error('Üretilen DB temiz yüklenmedi: ' + JSON.stringify(loaded.skipped.slice(0, 3)));
 
-  return { version: db.version, hashes: Object.keys(sha256).length, fresh: fresh.length, rules: yara.count, skippedRules: yara.skipped, bytes: Buffer.byteLength(json) };
+  return {
+    version: db.version,
+    hashes: Object.keys(sha256).length,
+    fresh: fresh.length,
+    rules: yara.count,
+    skippedRules: yara.skipped,
+    phishingDomains: phish ? phish.count : 0,
+    malwareDomains: malware ? malware.count : 0,
+    droppedDomains: (phish ? phish.dropped : 0) + (malware ? malware.dropped : 0),
+    bytes: Buffer.byteLength(json)
+  };
 }
 
-module.exports = { parseCsvLine, parseMalwareBazaarCsv, mergeHashes, extractSupportedRules, threatName, build };
+module.exports = { parseCsvLine, parseMalwareBazaarCsv, mergeHashes, extractSupportedRules, threatName, parseDomainList, build };
 
 if (require.main === module) {
   build(parseArgs(process.argv.slice(2)))

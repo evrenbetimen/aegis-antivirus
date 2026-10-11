@@ -21,6 +21,7 @@ node --test test/signatures.test.js   # imza DB + YARA motoru
 node --test test/yara-engine.test.js  # genişletilmiş YARA yapıları
 node --test test/build-db.test.js     # imza DB üretim hattı
 node --test test/installer.test.js    # .pkg / .dmg yükleyici taraması
+node --test test/phishing.test.js     # kimlik avı listesi ve bağlantı denetimi
 node --test test/archive.test.js      # arşiv tarama (zip/tar/gz)
 node --test test/cache.test.js        # hash önbelleği
 node --test test/dbupdate.test.js     # imza DB güncelleme (Ed25519, yönlendirme, dizin)
@@ -86,6 +87,17 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
     `pkgutil --expand-full` ile. `.dmg` macOS'ta `hdiutil` ile salt okunur ve
     Finder'da görünmeden bağlanır, taranır, her durumda ayrılır; şifreli
     görüntüler parola sormamak için atlanır
+  - **Kimlik avı koruması** (`src/phishing.js`): imzalı DB, ~386 bin
+    kimlik avı alan adı (Phishing.Database, MIT) ve URLhaus zararlı alan
+    adlarını (abuse.ch, CC0) SHA-256 özeti olarak taşır (düz liste yok, ~4 MB).
+    Kimlik sayfasındaki **bağlantı denetleyici** adresi cihazda denetler: liste
+    eşleşmesi ve sezgiler (punycode/benzer harf, marka taklidi, `@` hilesi,
+    IP adresi, kısaltıcı, şifresiz http). Taramada `.webloc/.url/.html/.eml`
+    dosyalarındaki bağlantılar listeyle denetlenir (yalnızca işaretlenir,
+    karantinaya alınmaz). Popüler alan adları ve paylaşımlı barındırma
+    kökleri listeden derleme sırasında çıkarılır (ilk 100 bin sitede 0
+    eşleşme ölçüldü). Gerçek zamanlı engelleme firewall uzantısındadır
+    (Apple onayı bekliyor)
   - **Hash önbelleği** (inode+mtime+size → SHA-256): ikinci tarama ~10x hızlı
   - **Paralel tarama** — 8'den fazla dosyada worker thread havuzu (CPU
     çekirdeği kadar paralel hash + imza taraması); 800×128KB ölçümünde

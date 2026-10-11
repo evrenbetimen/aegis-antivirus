@@ -1,6 +1,6 @@
 {
   "name": "aegis-antivirus",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Aegis - macOS icin gelismis guvenlik paketi (tarama, karantina, firewall)",
   "main": "main.js",
   "scripts": {

@@ -48,7 +48,8 @@
   }
 
   try {
-    await until(() => window.__aegis && window.__aegis.ready, 20000, 'uygulama hazır');
+    await until(() => window.__aegis && window.__aegis.ready, 90000, 'uygulama hazır');
+    info.readyMs = Math.round(performance.now());
     const runtime = await window.api.getRuntime();
     info.platform = runtime.platform;
     info.engine = runtime.engine && runtime.engine.engine;

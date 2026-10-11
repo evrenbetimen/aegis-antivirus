@@ -135,3 +135,20 @@ test('alan adı listeleri: popüler ve platform kökleri çıkarılır, kaynak y
   assert.equal(r2.phishingDomains, 3);
   assert.ok(phishing.lookupHost('kotu-giris.xyz', signatures.load(out2).domains));
 });
+
+test('eski istemci sınırı: DB sığana kadar en eski hash\'ler çıkarılır, EICAR kalır', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aegis-build-'));
+  const prev = path.join(dir, 'prev.json');
+  const sha = {};
+  for (let i = 1; i <= 500; i++) sha[h(i)] = 'Eski.' + i;
+  fs.writeFileSync(prev, JSON.stringify({ version: '0', sha256: sha }));
+  const out = path.join(dir, 'out');
+  const r = await build.build({ out, yaraDirs: [], maxHashes: 1000, version: '1', previous: prev, legacyLimit: 20000 });
+  const json = fs.readFileSync(path.join(out, 'db.json'));
+  assert.ok(json.length <= 20000, `${json.length} bayt`);
+  assert.ok(r.trimmedHashes > 0);
+  const db = JSON.parse(json);
+  assert.ok(db.sha256[EICAR]);
+  assert.ok(db.sha256[h(500)], 'en yeni hash kalmalı');
+  assert.ok(!db.sha256[h(1)], 'en eski hash çıkmalı');
+});

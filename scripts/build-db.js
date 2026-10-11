@@ -35,6 +35,9 @@ const { validateDb } = require('../src/dbupdate');
 
 const EICAR_SHA256 = '275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f';
 const MAX_DB_BYTES = 36 * 1024 * 1024; // uygulama 40MB üstünü reddeder
+// 40MB sınırından önceki sürümler 20MB üstünü reddeder; yayın onlar
+// güncellenene kadar bu sınırın altında tutulur (en eski hash'ler düşer)
+const LEGACY_CLIENT_BYTES = 19 * 1024 * 1024;
 
 function parseArgs(argv) {
   const out = { yaraDirs: [], maxHashes: 100000 }; // ~100 bayt/kayıt → ~10MB
@@ -384,7 +387,20 @@ async function build(opts) {
   if (phish || malware) db.domains = { phishing: phish ? phish.list : '', malware: malware ? malware.list : '' };
   const err = validateDb(db);
   if (err) throw new Error('Şema hatası: ' + err);
-  const json = JSON.stringify(db);
+  let json = JSON.stringify(db);
+  let trimmedHashes = 0;
+  const limit = opts.legacyLimit || LEGACY_CLIENT_BYTES;
+  if (Buffer.byteLength(json) > limit) {
+    const keys = Object.keys(db.sha256).filter((k) => k !== EICAR_SHA256); // eski → yeni
+    const perHash = keys.length ? (Buffer.byteLength(JSON.stringify(db.sha256)) / (keys.length + 1)) : 1;
+    while (Buffer.byteLength(json) > limit && keys.length) {
+      const drop = Math.max(1, Math.ceil((Buffer.byteLength(json) - limit) / perHash));
+      for (const k of keys.splice(0, drop)) delete db.sha256[k];
+      trimmedHashes += drop;
+      json = JSON.stringify(db);
+    }
+    if (trimmedHashes) console.warn(`::warning::Eski istemci sınırı için en eski ${trimmedHashes} hash çıkarıldı`);
+  }
   if (Buffer.byteLength(json) > MAX_DB_BYTES) throw new Error(`DB çok büyük (${Buffer.byteLength(json)} bayt)`);
 
   // Son güvenlik: üretilen DB, uygulamanın yükleyicisiyle hatasız yüklenmeli
@@ -395,7 +411,8 @@ async function build(opts) {
 
   return {
     version: db.version,
-    hashes: Object.keys(sha256).length,
+    hashes: Object.keys(db.sha256).length,
+    trimmedHashes,
     fresh: fresh.length,
     rules: yara.count,
     skippedRules: yara.skipped,

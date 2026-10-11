@@ -249,8 +249,9 @@ genişletmeleri **Swift**.
 5. ✅ **Tam Disk Erişimi (TCC)** — ilk açılışta izin yoksa rehber penceresi
    çıkar; Sistem Ayarları'ndan dönünce durum otomatik yenilenir, Ayarlar'da
    güncel durum görünür (`src/permissions.js`)
-6. **Gerçek imza istihbaratı** — saatlik besleme hazır (`signatures.yml`);
-   çalışması için depo sırrı `DB_SIGNING_KEY` (özel anahtar) gerekir. Depo
+6. **Gerçek imza istihbaratı** — saatlik besleme yayında (`signatures.yml`,
+   `DB_SIGNING_KEY` eklendi). Yayın, 20MB sınırlı eski sürümler güncellenene
+   kadar 19MB altında tutulur (gerekirse en eski hash'ler düşer). Depo
    gizliyse yayın herkese açık ayrı depoya yapılmalı (`vars.SIGNATURES_REPO`
    + `SIGNATURES_TOKEN`). Authenticode sertifika kuralları (pe modülü) henüz yok
 7. ✅ **Otomatik uygulama güncellemesi** — `electron-updater` (`src/updater.js`):

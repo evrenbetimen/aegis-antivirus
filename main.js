@@ -118,6 +118,50 @@ function createWindow() {
       }, 5500);
     });
   }
+
+  // Test bayrağı: --ui-selftest [--ui-shots=<dizin>] → test/ui-selftest.js'i
+  // pencerede çalıştır, sonucu yazdır, başarısızsa 1 ile çık (CI: macOS + Linux)
+  if (process.argv.includes('--ui-selftest')) {
+    // Pencere hiç yüklenmezse (ör. sistem iletişim kutusu) CI'ı asılı bırakma
+    setTimeout(() => {
+      console.log('[ui-selftest] FAIL zaman aşımı (pencere yanıt vermedi)');
+      app.exit(2);
+    }, 240000).unref();
+    win.webContents.once('did-finish-load', async () => {
+      let result;
+      try {
+        const script = fs.readFileSync(path.join(__dirname, 'test', 'ui-selftest.js'), 'utf8');
+        result = await win.webContents.executeJavaScript(script, true);
+      } catch (err) {
+        result = { ok: false, failures: ['enjeksiyon: ' + String((err && err.stack) || err)], info: {} };
+      }
+      const shotsArg = process.argv.find((a) => a.startsWith('--ui-shots='));
+      if (shotsArg) {
+        const dir = shotsArg.slice('--ui-shots='.length);
+        fs.mkdirSync(dir, { recursive: true });
+        for (const theme of ['light', 'dark']) {
+          for (const page of ['dashboard', 'audit', 'startup', 'identity', 'settings']) {
+            try {
+              await win.webContents.executeJavaScript(
+                `document.documentElement.setAttribute('data-theme', ${JSON.stringify(theme)});` +
+                  `document.querySelector('.nav-item[data-page=${JSON.stringify(page)}]').click();`
+              );
+              await new Promise((r) => setTimeout(r, 600));
+              const img = await win.webContents.capturePage();
+              fs.writeFileSync(path.join(dir, `${theme}-${page}.png`), img.toPNG());
+            } catch (err) {
+              result.failures.push(`ekran görüntüsü ${theme}-${page}: ${err.message}`);
+              result.ok = false;
+            }
+          }
+        }
+      }
+      console.log('[ui-selftest] ' + JSON.stringify(result.info));
+      for (const f of result.failures) console.log('[ui-selftest] FAIL ' + f);
+      console.log('[ui-selftest] ' + (result.ok ? 'PASS' : 'FAIL'));
+      app.exit(result.ok ? 0 : 1);
+    });
+  }
 }
 
 /* ---------------- Korumalı servisler: honeypot + zamanlayıcı ---------------- */

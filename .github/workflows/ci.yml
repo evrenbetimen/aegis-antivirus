@@ -83,6 +83,42 @@ jobs:
         env:
           AEGIS_ENGINE: native
 
+  ui:
+    name: Arayüz öz testi (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS: sistem denetimi ve başlangıç öğeleri gerçek sistem verisiyle doğrulanır
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:native
+      - name: Öz test (her sayfa, 12 dil, açık/koyu tema)
+        shell: bash
+        run: |
+          ARGS=(--ui-selftest --ui-shots="$RUNNER_TEMP/ui-shots")
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            env -u NODE_OPTIONS xvfb-run -a ./node_modules/.bin/electron . --no-sandbox "${ARGS[@]}"
+          else
+            env -u NODE_OPTIONS ./node_modules/.bin/electron . "${ARGS[@]}"
+          fi
+        env:
+          AEGIS_ENGINE: native
+      - name: Ekran görüntüleri
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-shots-${{ matrix.os }}
+          path: ${{ runner.temp }}/ui-shots
+          if-no-files-found: ignore
+
   audit:
     name: Bağımlılık güvenlik denetimi
     runs-on: ubuntu-latest

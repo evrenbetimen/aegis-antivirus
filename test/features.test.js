@@ -133,3 +133,40 @@ test('parola sızıntısı: yalnızca 5 karakterlik önek gönderilir, eşleşme
   });
   assert.equal((await breach.checkPassword('')).ok, false);
 });
+
+// Gerçek macOS üzerinde: ayrıştırıcılar sistem komutlarının bugünkü çıktısını
+// tanıyabiliyor mu? (CI'da macos-latest koşucusunda çalışır; başka sistemde atlanır)
+const onMac = process.platform === 'darwin';
+
+test('sistem denetimi: gerçek macOS komut çıktıları tanınıyor', { skip: !onMac && 'yalnızca macOS' }, async () => {
+  const r = await sysaudit.audit();
+  console.log('# denetim:', JSON.stringify(r.items.map((i) => [i.id, i.status, i.detail || ''])));
+  assert.equal(r.supported, true);
+  assert.deepEqual(
+    r.items.map((i) => i.id),
+    ['filevault', 'gatekeeper', 'sip', 'firewall', 'updates', 'wifi', 'screenlock']
+  );
+  const valid = ['pass', 'warn', 'fail', 'na', 'unknown'];
+  for (const i of r.items) assert.ok(valid.includes(i.status), `${i.id}: ${i.status}`);
+  // Bu komutlar yönetici izni istemez; çıktıları tanınmıyorsa ayrıştırıcı eskimiştir
+  for (const id of ['filevault', 'gatekeeper', 'sip', 'firewall']) {
+    const item = r.items.find((i) => i.id === id);
+    assert.notEqual(item.status, 'unknown', `${id} çıktısı tanınmadı`);
+  }
+  for (const i of r.items) {
+    if (i.status !== 'pass' && i.status !== 'na') assert.match(String(i.settingsUrl), /^x-apple\.systempreferences:/, i.id);
+  }
+});
+
+test('başlangıç öğeleri: gerçek macOS kayıtları okunuyor', { skip: !onMac && 'yalnızca macOS' }, () => {
+  const res = startup.list({ checkFile: () => null });
+  console.log('# başlangıç öğeleri:', res.items.length, 'okunamayan:', res.items.filter((i) => i.risk === 'unreadable').map((i) => i.file));
+  assert.deepEqual(res.errors, []);
+  assert.ok(res.items.length > 0, 'macOS’ta en az bir LaunchAgent/LaunchDaemon olmalı');
+  // XML ve ikili (bplist) kayıtların tümü ayrıştırılabilmeli
+  assert.deepEqual(res.items.filter((i) => i.risk === 'unreadable').map((i) => `${i.file}: ${i.error}`), []);
+  for (const i of res.items) {
+    assert.ok(['user', 'agent', 'daemon'].includes(i.scope));
+    assert.ok(i.label && typeof i.label === 'string');
+  }
+});

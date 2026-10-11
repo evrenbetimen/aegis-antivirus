@@ -141,7 +141,7 @@ yapılandırmasında geçerlidir).
 |---|---|---|
 | IPC socket | `/Library/Application Support/Aegis/aegis.sock`, yoksa `~/Library/Application Support/*/aegis.sock` | `AEGIS_IPC_SOCKET` |
 | Kalkan politikası | `/Library/Application Support/Aegis/shield-policy.json` | `AEGIS_POLICY` |
-| İmza veritabanı | `/Library/Application Support/Aegis/signatures/db.json` | `AEGIS_SIGNATURE_DB` |
+| İmza veritabanı | `/Library/Application Support/Aegis/signatures/db.json` | `AEGIS_SIGNATURE_DB` (firewall bunu kimlik avı alan adı listesi için de okur) |
 | Firewall kuralları | `/Library/Application Support/Aegis/firewall-rules.json` | `AEGIS_RULES_FILE` |
 | Firewall kurulumu | (otomatik) | `AEGIS_SKIP_FILTER_SETUP=1` → `NEFilterManager` ayarını atla |
 
@@ -149,6 +149,13 @@ Klasör yokluğunda kalkan ve firewall, `/Users/*` altındaki
 `Library/Application Support/*` dizinlerinde de arama yapar; firewall
 özellikle Electron'un gerçekte yazdığı `aegis-store.json` dosyasını bu
 şekilde bulur (§3.3).
+
+**Web koruması (firewall):** kural listesinden sonra uzak alan adı ve üst
+alan adları, imzalı `db.json` içindeki kimlik avı / zararlı alan adı
+listelerinde aranır (biçim: `src/phishing.js`); eşleşen akış düşürülür ve
+`ruleId` olarak `phishing:<alan>` raporlanır. Açık bir `allow` kuralı yine
+önceliklidir; uygulamada "Web koruması" kapatılırsa (`settings.webProtection`)
+devre dışı kalır. Liste 30 saniyede bir değişiklik için denetlenir.
 
 ### 3.1 `shield-policy.json`
 

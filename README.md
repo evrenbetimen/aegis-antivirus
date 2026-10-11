@@ -20,6 +20,8 @@ Modül testleri (electron gerektirmez):
 node --test test/signatures.test.js   # imza DB + YARA motoru
 node --test test/yara-engine.test.js  # genişletilmiş YARA yapıları
 node --test test/build-db.test.js     # imza DB üretim hattı
+node --test test/installer.test.js    # .pkg / .dmg yükleyici taraması
+node --test test/phishing.test.js     # kimlik avı listesi ve bağlantı denetimi
 node --test test/archive.test.js      # arşiv tarama (zip/tar/gz)
 node --test test/cache.test.js        # hash önbelleği
 node --test test/dbupdate.test.js     # imza DB güncelleme (Ed25519, yönlendirme, dizin)
@@ -54,18 +56,48 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
     (`signatures/rules.yar` + yayındaki gömülü kurallar): metin dizgiler
     (`nocase/ascii/wide/fullword`), hex (`??`, `A?`, `~XX`, `[n-m]` atlama,
     `( AA | BB )`), `uint16(0) == 0x5A4D`, `filesize`, `$a at N`, aritmetik,
-    `N of ($x*)`. Desteklenmeyen yapı (pe/elf modülleri, regex, `for`, `in`)
+    `N of ($x*)`, anonim dizgiler (`$ = ...`). Desteklenmeyen yapı (pe/elf modülleri, regex, `for`, `in`)
     içeren kural **atlanır**, asla yanlış değerlendirilmez
   - **Gerçek imza beslemesi**: saatlik GitHub Actions (`signatures.yml`) —
     MalwareBazaar (abuse.ch, CC0) son örnek hash'leri (kayan pencere, 100k) +
-    ReversingLabs YARA kuralları (MIT; motorun desteklediği ~290 kural) →
+    açık kaynak YARA kural setleri (`signatures/rule-sources.json`) →
     imzalı `db.json` → `signatures` sürümü. Uygulama varsayılan olarak bunu
     6 saatte bir indirir (Ayarlar → Otomatik güncelle)
+  - **Uygulamayla gelen kurallar** (~770 kural, besleme olmadan da çalışır;
+    `npm run build:bundled-db` ile yenilenir). Lisanslar ve kaynak commit'i
+    `db.json → sources` içinde kayıtlıdır:
+
+    | Kaynak | Kapsam | Lisans | Kural |
+    | --- | --- | --- | --- |
+    | [ReversingLabs](https://github.com/reversinglabs/reversinglabs-yara-rules) | `certificate/` hariç | MIT | 293 |
+    | [ditekSHen](https://github.com/ditekshen/detection) | yalnızca `malware.yar` | BSD-2-Clause | 411 |
+    | [bartblaze](https://github.com/bartblaze/Yara-rules) | APT, crimeware, ransomware | MIT | 66 |
+
+    Bilerek alınmayanlar: signature-base (DRL 1.1, eşleşme mesajında yazar
+    gösterimi şartı), Elastic (ELv2), genel/araç/gösterge kuralları (yanlış
+    pozitif riski). 3.413 temiz Linux dosyasında 0 tespit ölçüldü
   - EICAR test dosyası (kodda ham metin yok — AV yarışı için)
   - Sezgisel kurallar: çift uzantı, indirilen Windows binary'leri,
     LaunchAgent kalıcılığı
   - **Arşiv taraması** (zip/tar/tar.gz/gz/bz2) — dosya çıkarmadan, akışla;
     zip-slip imkânsız, girdi/bayt/süre sınırları, şifreli girdiler atlanır
+  - **macOS yükleyici taraması** (`src/installer.js`): `.pkg` saf JS xar
+    okuyucusuyla açılır; Distribution, preinstall/postinstall betikleri ve
+    yükteki (gzip cpio) her dosya taranır, Apple'ın pbzx yükleri macOS'ta
+    `pkgutil --expand-full` ile. `.dmg` macOS'ta `hdiutil` ile salt okunur ve
+    Finder'da görünmeden bağlanır, taranır, her durumda ayrılır; şifreli
+    görüntüler parola sormamak için atlanır
+  - **Kimlik avı koruması** (`src/phishing.js`): imzalı DB, ~386 bin
+    kimlik avı alan adı (Phishing.Database, MIT) ve URLhaus zararlı alan
+    adlarını (abuse.ch, CC0) SHA-256 özeti olarak taşır (düz liste yok, ~4 MB).
+    Kimlik sayfasındaki **bağlantı denetleyici** adresi cihazda denetler: liste
+    eşleşmesi ve sezgiler (punycode/benzer harf, marka taklidi, `@` hilesi,
+    IP adresi, kısaltıcı, şifresiz http). Taramada `.webloc/.url/.html/.eml`
+    dosyalarındaki bağlantılar listeyle denetlenir (yalnızca işaretlenir,
+    karantinaya alınmaz). Popüler alan adları ve paylaşımlı barındırma
+    kökleri listeden derleme sırasında çıkarılır (ilk 100 bin sitede 0
+    eşleşme ölçüldü). Gerçek zamanlı engelleme firewall uzantısındadır
+    (Apple onayı bekliyor)
   - **Hash önbelleği** (inode+mtime+size → SHA-256): ikinci tarama ~10x hızlı
   - **Paralel tarama** — 8'den fazla dosyada worker thread havuzu (CPU
     çekirdeği kadar paralel hash + imza taraması); 800×128KB ölçümünde
@@ -217,8 +249,9 @@ genişletmeleri **Swift**.
 5. ✅ **Tam Disk Erişimi (TCC)** — ilk açılışta izin yoksa rehber penceresi
    çıkar; Sistem Ayarları'ndan dönünce durum otomatik yenilenir, Ayarlar'da
    güncel durum görünür (`src/permissions.js`)
-6. **Gerçek imza istihbaratı** — saatlik besleme hazır (`signatures.yml`);
-   çalışması için depo sırrı `DB_SIGNING_KEY` (özel anahtar) gerekir. Depo
+6. **Gerçek imza istihbaratı** — saatlik besleme yayında (`signatures.yml`,
+   `DB_SIGNING_KEY` eklendi). Yayın, 20MB sınırlı eski sürümler güncellenene
+   kadar 19MB altında tutulur (gerekirse en eski hash'ler düşer). Depo
    gizliyse yayın herkese açık ayrı depoya yapılmalı (`vars.SIGNATURES_REPO`
    + `SIGNATURES_TOKEN`). Authenticode sertifika kuralları (pe modülü) henüz yok
 7. ✅ **Otomatik uygulama güncellemesi** — `electron-updater` (`src/updater.js`):

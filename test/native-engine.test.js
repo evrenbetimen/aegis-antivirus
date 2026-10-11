@@ -83,6 +83,14 @@ function gen(seed) {
     }
   }
 
+  // Anonim dizgiler (`$ = ...`): yalnızca "them" ve "($*)" ile anılır
+  const anonymous = [];
+  const anonCount = r() < 0.3 ? int(1, 2) : 0;
+  for (let i = 0; i < anonCount; i += 1) {
+    if (r() < 0.5) anonymous.push(`$ = "${pick(ALPHABET)}${pick(ALPHABET)}"${r() < 0.3 ? ' nocase' : ''}`);
+    else anonymous.push(`$ = { ${hexSeq(0, int(1, 3))} }`);
+  }
+
   function num(depth) {
     const k = r();
     if (depth > 2 || k < 0.25) return String(pick([0, 1, 2, 3, 4, 7, 16, 65, 0x5a4d, -1]));
@@ -103,14 +111,17 @@ function gen(seed) {
       const set = r() < 0.5 ? 'them' : `(${strings.map((s) => '$' + s.id).slice(0, int(1, strings.length)).join(', ')})`;
       return `${q} of ${set}`;
     }
-    if (k < 0.62) return `any of ($${strings[0].id[0]}*)`;
+    if (k < 0.6) return `any of ($${strings[0].id[0]}*)`;
+    if (k < 0.62) return `${pick(['any', 'all', '1', '2'])} of ($*)`;
     if (k < 0.7) return 'not ' + cond(depth + 1);
     if (k < 0.74) return pick(['true', 'false']);
     if (k < 0.77) return num(depth + 1); // sayı da bir koşul olabilir
     return `(${cond(depth + 1)} ${pick(['and', 'or'])} ${cond(depth + 1)})`;
   }
 
-  return `rule R${seed} { strings: ${strings.map((s) => s.decl).join(' ')} condition: ${cond(0)} }`;
+  const decls = strings.map((s) => s.decl);
+  for (const a of anonymous) decls.splice(int(0, decls.length), 0, a);
+  return `rule R${seed} { strings: ${decls.join(' ')} condition: ${cond(0)} }`;
 }
 
 function genBuffer(seed) {
@@ -178,11 +189,14 @@ rule Tilde { strings: $a = { ~?1 } condition: $a }
 rule Ok2 : tag1 tag2 { meta: author = "x" strings: $a = { 41 ( 42 | 43 ) } condition: #a == 1 }
 rule Unterminated { strings: $a = "a" condition: $a
 rule Ok3 { condition: filesize > 0 }
+rule Anon { strings: $ = "a" $ = { 41 42 } $b = "c" condition: 2 of them and any of ($*) and $b }
+rule AnonRef { strings: $ = "a" condition: $ }
+rule AnonNoEq { strings: $ "a" condition: any of them }
 `;
   const js = signatures.parseYara(text);
   const set = new native.binding.RuleSet(text);
   assert.deepEqual(set.names(), js.map((r) => r.name));
-  assert.deepEqual(set.names(), ['Ok1', 'Ok2', 'Ok3']);
+  assert.deepEqual(set.names(), ['Ok1', 'Ok2', 'Ok3', 'Anon']);
   assert.deepEqual(set.skipped().map((s) => s.rule), js.skipped.map((s) => s.rule));
 });
 

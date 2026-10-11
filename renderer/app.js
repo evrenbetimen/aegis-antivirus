@@ -887,6 +887,7 @@ async function loadSettings() {
   $('#set-firewall').checked = settings.firewallEnabled;
   $('#set-realtime').checked = !!settings.realtimeEnabled;
   $('#set-archives').checked = !!settings.scanArchives;
+  $('#set-web').checked = settings.webProtection !== false;
   $('#set-honeypot').checked = !!settings.honeypotEnabled;
   $('#set-scheduled').checked = !!settings.scheduledScan;
   $('#set-interval').value = settings.scanIntervalHours || 24;
@@ -922,6 +923,7 @@ bind('#set-heuristics', 'heuristics');
 bind('#set-notifications', 'notifications');
 bind('#set-firewall', 'firewallEnabled');
 bind('#set-archives', 'scanArchives');
+bind('#set-web', 'webProtection');
 bind('#set-honeypot', 'honeypotEnabled');
 bind('#set-realtime', 'realtimeEnabled');
 bind('#set-scheduled', 'scheduledScan');
@@ -1040,6 +1042,7 @@ function applyLanguage(lang) {
   paintFda($('#tcc-status'), fdaStatus);
   paintStrength();
   if (breachState) paintBreach(breachState);
+  if (linkState) paintLink(linkState);
 }
 
 function gotoCurrent() {
@@ -1410,6 +1413,61 @@ $('#breach-form').addEventListener('submit', async (e) => {
   input.value = '';
   $('#breach-check').disabled = false;
   paintBreach(breachState);
+});
+
+/* ---------- Bağlantı denetleyici (kimlik avı) ---------- */
+let linkState = null;
+
+function paintLink(st) {
+  const el = $('#link-result');
+  const list = $('#link-reasons');
+  el.hidden = false;
+  list.hidden = true;
+  list.textContent = '';
+  if (st.checking) {
+    el.className = 'breach-result';
+    el.textContent = t('id.breach.checking');
+    return;
+  }
+  if (Number.isFinite(st.listSize)) {
+    $('#link-db').textContent = st.listSize ? t('id.link.db', { n: fmtNum(st.listSize) }) : t('id.link.noDb');
+  }
+  if (!st.ok && st.verdict === 'invalid') {
+    el.className = 'breach-result warn';
+    el.textContent = t('id.link.invalid');
+    return;
+  }
+  const cls = { dangerous: 'bad', suspicious: 'warn', safe: 'ok' }[st.verdict] || 'warn';
+  el.className = 'breach-result ' + cls;
+  el.textContent = t('id.link.verdict.' + st.verdict, { host: st.display || st.host || '' });
+  const reasons = st.reasons || [];
+  for (const r of reasons) {
+    const li = document.createElement('li');
+    li.className = r.level;
+    li.textContent = t('id.link.reason.' + r.code, r.vars || {});
+    list.appendChild(li);
+  }
+  if (!reasons.length) {
+    const li = document.createElement('li');
+    li.textContent = t('id.link.reason.none');
+    list.appendChild(li);
+  }
+  list.hidden = false;
+}
+
+$('#link-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const url = $('#link-input').value.trim();
+  if (!url) return;
+  $('#link-check').disabled = true;
+  paintLink({ checking: true });
+  try {
+    linkState = await window.api.linkCheck(url);
+  } catch (err) {
+    linkState = { ok: false, verdict: 'invalid', reasons: [] };
+  }
+  $('#link-check').disabled = false;
+  paintLink(linkState);
 });
 
 /* ---------- Başlangıç ---------- */

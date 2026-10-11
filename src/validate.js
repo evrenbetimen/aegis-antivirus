@@ -8,6 +8,7 @@ const SETTING_TYPES = {
   heuristics: 'boolean',
   notifications: 'boolean',
   scanArchives: 'boolean',
+  webProtection: 'boolean',
   firewallEnabled: 'boolean',
   realtimeEnabled: 'boolean',
   scheduledScan: 'boolean',

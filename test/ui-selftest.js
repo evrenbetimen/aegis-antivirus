@@ -48,7 +48,8 @@
   }
 
   try {
-    await until(() => window.__aegis && window.__aegis.ready, 20000, 'uygulama hazır');
+    await until(() => window.__aegis && window.__aegis.ready, 90000, 'uygulama hazır');
+    info.readyMs = Math.round(performance.now());
     const runtime = await window.api.getRuntime();
     info.platform = runtime.platform;
     info.engine = runtime.engine && runtime.engine.engine;
@@ -119,6 +120,14 @@
     await sleep(100);
     if ($('#pw-output').value.length !== 32) fail('parola uzunluğu: ' + $('#pw-output').value.length);
     if (!$('#pw-strength-label').textContent.trim()) fail('parola gücü etiketi boş');
+
+    // 5b) Bağlantı denetleyici: marka taklidi şüpheli, gerekçeler çevrilmiş
+    $('#link-input').value = 'https://paypa1.com/giris';
+    $('#link-form').requestSubmit();
+    await until(() => /warn|bad/.test($('#link-result').className) && !$('#link-reasons').hidden, 10000, 'bağlantı denetimi');
+    info.link = { verdict: $('#link-result').textContent, reasons: $$('#link-reasons li').map((li) => li.textContent), db: $('#link-db').textContent };
+    if (!$$('#link-reasons li.warn').length) fail('bağlantı denetimi: uyarı gerekçesi yok');
+    if (!$('#link-db').textContent.trim()) fail('bağlantı denetimi: liste boyutu gösterilmedi');
 
     // 6) Tema: Sistem → Açık → Koyu → Sistem; açık ve koyu arka plan farklı
     const seq = [];

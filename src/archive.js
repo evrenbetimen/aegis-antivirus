@@ -1,5 +1,6 @@
 //
 // Arşiv tarama modülü — zip / tar / tar.gz / tgz / gz / bz2
+// (.pkg ve .dmg macOS yükleyicileri installer.js'e devredilir)
 //
 // Tasarım:
 //   - Hiçbir yere DOSYA ÇIKARMAZ: içerik sistem araçlarıyla akıtılır
@@ -10,6 +11,7 @@
 const path = require('path');
 const { spawn, execFile, execFileSync } = require('child_process');
 const { PassThrough } = require('stream');
+const installer = require('./installer');
 
 const ZIP_EXTS = ['.zip'];
 const TAR_EXTS = ['.tar', '.tgz', '.tar.gz', '.tbz2', '.tar.bz2'];
@@ -33,7 +35,7 @@ function kindOf(filePath) {
   if (TAR_EXTS.some((e) => p.endsWith(e))) return 'tar';
   if (p.endsWith('.gz')) return 'gz';
   if (p.endsWith('.bz2')) return 'bz2';
-  return null;
+  return installer.kindOf(p);
 }
 
 function isArchive(filePath) {
@@ -46,7 +48,7 @@ function isArchive(filePath) {
  */
 function archiveExt(name) {
   const p = lower(name);
-  for (const e of ['.tar.gz', '.tar.bz2', '.tgz', '.tbz2', '.tar', '.zip', '.gz', '.bz2']) {
+  for (const e of ['.tar.gz', '.tar.bz2', '.tgz', '.tbz2', '.tar', '.zip', '.gz', '.bz2', '.pkg', '.dmg']) {
     if (p.endsWith(e)) return e;
   }
   return null;
@@ -113,7 +115,7 @@ function parseUnzipList(out) {
 async function listEntries(filePath, opts = {}) {
   const maxEntries = opts.maxEntries || DEFAULTS.maxEntries;
   const kind = kindOf(filePath);
-  if (!kind) return [];
+  if (!kind || installer.kindOf(filePath)) return []; // yükleyiciler yalnızca scanEntries ile
 
   try {
     if (kind === 'zip') {
@@ -274,6 +276,9 @@ async function scanEntries(filePath, onEntry, opts = {}) {
 
   const res = { scanned: 0, skipped: 0, totalBytes: 0, truncated: false };
   if (!isArchive(filePath) || typeof onEntry !== 'function') return res;
+  if (installer.kindOf(filePath)) {
+    return installer.scanEntries(filePath, onEntry, { maxEntries, maxEntryBytes, maxTotalBytes });
+  }
 
   let entries = [];
   try {

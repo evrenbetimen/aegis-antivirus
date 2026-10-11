@@ -80,3 +80,75 @@ test('uçtan uca: CSV + YARA dizini → uygulamanın temiz yüklediği db.json',
   assert.ok(json.sources.some((s) => /MIT License/.test(s.license)), 'lisans bildirimi eksik');
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('--yara-match: yalnız göreli yolu eşleşen kural dosyaları alınır', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aegis-build-'));
+  const rules = path.join(dir, 'rules');
+  fs.mkdirSync(path.join(rules, 'crimeware'), { recursive: true });
+  fs.mkdirSync(path.join(rules, 'generic'), { recursive: true });
+  fs.writeFileSync(path.join(rules, 'crimeware', 'a.yar'), 'rule Keep_Me { strings: $ = "keep-me-marker" condition: any of them }');
+  fs.writeFileSync(path.join(rules, 'generic', 'b.yar'), 'rule Drop_Me { strings: $a = "drop-me-marker" condition: $a }');
+  const out = path.join(dir, 'out');
+  const res = await build.build({ out, yaraDirs: [{ dir: rules, match: /^crimeware\// }], maxHashes: 10, version: '2099.1.2' });
+  assert.equal(res.rules, 1);
+  const db = signatures.load(out);
+  assert.deepEqual(db.rules.map((r) => r.name), ['Keep_Me']);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('alan adı listeleri: popüler ve platform kökleri çıkarılır, kaynak yoksa önceki korunur', async () => {
+  const phishing = require('../src/phishing');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aegis-build-'));
+  fs.writeFileSync(
+    path.join(dir, 'phish.txt'),
+    ['# yorum', 'kotu-giris.xyz', 'WWW.Banka-Dogrula.com.', 'sites.google.com', 'gravatar.com',
+      's3.us-west-2.amazonaws.com', 'https://evil.example.net/login', 'kotu-giris.xyz'].join('\n')
+  );
+  fs.writeFileSync(path.join(dir, 'hosts.txt'), '# URLhaus\n127.0.0.1\tmalware-cdn.top\n127.0.0.1\t1.2.3.4\n');
+  fs.writeFileSync(path.join(dir, 'top.csv'), '1,google.com\n2,gravatar.com\n3,bucket.s3.us-west-2.amazonaws.com\n');
+  const out = path.join(dir, 'out');
+  const r = await build.build({
+    out, yaraDirs: [], maxHashes: 10, version: '1',
+    phishingList: path.join(dir, 'phish.txt'), urlhausHosts: path.join(dir, 'hosts.txt'),
+    popularDomains: path.join(dir, 'top.csv')
+  });
+  assert.equal(r.phishingDomains, 3);
+  assert.equal(r.malwareDomains, 1);
+  const db = signatures.load(out);
+  assert.deepEqual(phishing.lookupHost('giris.kotu-giris.xyz', db.domains), { kind: 'phishing', domain: 'kotu-giris.xyz' });
+  assert.ok(phishing.lookupHost('www.banka-dogrula.com', db.domains));
+  assert.ok(phishing.lookupHost('evil.example.net', db.domains));
+  assert.deepEqual(phishing.lookupHost('malware-cdn.top', db.domains), { kind: 'malware', domain: 'malware-cdn.top' });
+  for (const ok of ['sites.google.com', 'gravatar.com', 'bucket.s3.us-west-2.amazonaws.com', 'example.net']) {
+    assert.equal(phishing.lookupHost(ok, db.domains), null, ok);
+  }
+  const json = JSON.parse(fs.readFileSync(path.join(out, 'db.json'), 'utf8'));
+  assert.deepEqual(json.sources.map((s) => s.license), ['MIT', 'CC0']);
+  assert.ok(!fs.readFileSync(path.join(out, 'db.json'), 'utf8').includes('kotu-giris'), 'liste düz metin taşımamalı');
+
+  // Kaynak erişilemezse önceki yayının listesi korunur
+  const out2 = path.join(dir, 'out2');
+  const r2 = await build.build({
+    out: out2, yaraDirs: [], maxHashes: 10, version: '2',
+    previous: path.join(out, 'db.json'), phishingList: path.join(dir, 'yok.txt')
+  });
+  assert.equal(r2.phishingDomains, 3);
+  assert.ok(phishing.lookupHost('kotu-giris.xyz', signatures.load(out2).domains));
+});
+
+test('eski istemci sınırı: DB sığana kadar en eski hash\'ler çıkarılır, EICAR kalır', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aegis-build-'));
+  const prev = path.join(dir, 'prev.json');
+  const sha = {};
+  for (let i = 1; i <= 500; i++) sha[h(i)] = 'Eski.' + i;
+  fs.writeFileSync(prev, JSON.stringify({ version: '0', sha256: sha }));
+  const out = path.join(dir, 'out');
+  const r = await build.build({ out, yaraDirs: [], maxHashes: 1000, version: '1', previous: prev, legacyLimit: 20000 });
+  const json = fs.readFileSync(path.join(out, 'db.json'));
+  assert.ok(json.length <= 20000, `${json.length} bayt`);
+  assert.ok(r.trimmedHashes > 0);
+  const db = JSON.parse(json);
+  assert.ok(db.sha256[EICAR]);
+  assert.ok(db.sha256[h(500)], 'en yeni hash kalmalı');
+  assert.ok(!db.sha256[h(1)], 'en eski hash çıkmalı');
+});

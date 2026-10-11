@@ -24,6 +24,14 @@
 //  default is `allow` (a firewall that fails open only fails the rules it did
 //  not understand — everything is logged, nothing is silently blackholed).
 //
+//  Web protection: after the rule list, the remote host name (and each parent
+//  domain) is looked up in the phishing / malware domain lists that ship in
+//  the signed signature database (`<userData>/signatures/db.json`, format in
+//  `src/phishing.js`: sorted fixed width records of the first 11 base64url
+//  characters of SHA-256(domain)).  Turning off "Web protection" in the app
+//  (`settings.webProtection = false` in aegis-store.json) disables it.  An
+//  explicit `allow` rule still wins.
+//
 //  Honest limitation: the remote endpoint comes from `remoteFlowEndpoint`
 //  (macOS 15+) with `remoteHostname` as a fallback, and the framework may not
 //  have populated either one when `handleNewFlow` runs.  In that case host and
@@ -36,6 +44,7 @@ import Foundation
 import NetworkExtension
 import Network
 import Darwin
+import CryptoKit
 import os.log
 
 // MARK: - Logging
@@ -208,6 +217,14 @@ final class FirewallRuleStore {
         return loadedPath
     }
 
+    /// True when an explicit `allow` rule matches (beats every block source).
+    func isAllowed(host: String, port: Int, proto: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        reloadIfNeeded()
+        return rules.contains(where: { $0.type == .allow && $0.matches(host: host, port: port, proto: proto) })
+    }
+
     /// Block only when a `block` rule matches and no `allow` rule exempts it.
     func shouldBlock(host: String, port: Int, proto: String) -> String? {
         lock.lock()
@@ -262,6 +279,134 @@ final class FirewallRuleStore {
             return (try? JSONDecoder().decode([FirewallRule].self, from: JSONSerialization.data(withJSONObject: array))) ?? []
         }
         return nil
+    }
+}
+
+// MARK: - Web protection (phishing / malware domains)
+
+/// Domain lists from the signed signature database, reloaded when it changes.
+final class PhishingDomainStore {
+    private static let recordWidth = 11
+    private static let reloadInterval: TimeInterval = 30
+
+    private let lock = NSLock()
+    private var lists: [(kind: String, bytes: [UInt8])] = []
+    private var enabled = true
+    private var loadedPath: String?
+    private var modificationTime: TimeInterval = 0
+    private var lastCheck: TimeInterval = 0
+
+    /// `<Application Support>/<app>/signatures/db.json` for every user, plus
+    /// the matching `aegis-store.json` that holds the on/off setting.
+    private static func candidates() -> [(db: String, store: String)] {
+        var out: [(db: String, store: String)] = []
+        if let override = ProcessInfo.processInfo.environment["AEGIS_SIGNATURE_DB"] {
+            out.append((override, ""))
+        }
+        out.append(("/Library/Application Support/Aegis/signatures/db.json", ""))
+        let fm = FileManager.default
+        guard let users = try? fm.contentsOfDirectory(atPath: "/Users") else { return out }
+        for user in users.sorted() {
+            let base = "/Users/\(user)/Library/Application Support"
+            guard let apps = try? fm.contentsOfDirectory(atPath: base) else { continue }
+            for app in apps.sorted() {
+                out.append(("\(base)/\(app)/signatures/db.json", "\(base)/\(app)/aegis-store.json"))
+            }
+        }
+        return out
+    }
+
+    /// Returns (kind, matched domain) when the host or a parent domain is listed.
+    func lookup(host: String) -> (kind: String, domain: String)? {
+        lock.lock()
+        defer { lock.unlock() }
+        reloadIfNeeded()
+        guard enabled, !lists.isEmpty else { return nil }
+
+        var name = host.lowercased()
+        while name.hasSuffix(".") { name.removeLast() }
+        guard name.contains("."), name.allSatisfy({ $0.isASCII }) else { return nil }
+        let labels = name.split(separator: ".").map(String.init)
+        guard labels.count >= 2 else { return nil }
+
+        for start in 0...(labels.count - 2) {
+            let candidate = labels[start...].joined(separator: ".")
+            let record = Self.record(for: candidate)
+            for list in lists where Self.contains(list.bytes, record) {
+                return (list.kind, candidate)
+            }
+        }
+        return nil
+    }
+
+    /// First 11 base64url characters of SHA-256(domain), as in src/phishing.js.
+    static func record(for domain: String) -> [UInt8] {
+        let digest = SHA256.hash(data: Data(domain.utf8))
+        let base64 = Data(digest).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+        return Array(base64.utf8.prefix(recordWidth))
+    }
+
+    private static func contains(_ list: [UInt8], _ record: [UInt8]) -> Bool {
+        var low = 0
+        var high = list.count / recordWidth - 1
+        while low <= high {
+            let mid = (low + high) / 2
+            let offset = mid * recordWidth
+            var order = 0
+            for i in 0..<recordWidth where order == 0 {
+                let a = list[offset + i], b = record[i]
+                if a != b { order = a < b ? -1 : 1 }
+            }
+            if order == 0 { return true }
+            if order < 0 { low = mid + 1 } else { high = mid - 1 }
+        }
+        return false
+    }
+
+    private func reloadIfNeeded() {
+        let now = Date().timeIntervalSince1970
+        guard now - lastCheck >= Self.reloadInterval else { return }
+        lastCheck = now
+
+        for candidate in Self.candidates() {
+            guard let attributes = try? FileManager.default.attributesOfItem(atPath: candidate.db),
+                  let modified = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970
+            else { continue }
+
+            enabled = Self.readEnabled(storePath: candidate.store)
+            if candidate.db == loadedPath && modified == modificationTime { return }
+
+            guard let data = FileManager.default.contents(atPath: candidate.db),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let domains = object["domains"] as? [String: Any]
+            else { continue }
+
+            var loaded: [(kind: String, bytes: [UInt8])] = []
+            for kind in ["phishing", "malware"] {
+                guard let text = domains[kind] as? String, !text.isEmpty,
+                      text.utf8.count % Self.recordWidth == 0 else { continue }
+                loaded.append((kind, Array(text.utf8)))
+            }
+            lists = loaded
+            loadedPath = candidate.db
+            modificationTime = modified
+            let total = loaded.reduce(0) { $0 + $1.bytes.count / Self.recordWidth }
+            log.info("Web koruması listesi yüklendi: \(candidate.db, privacy: .public) — \(total) alan adı")
+            return
+        }
+    }
+
+    /// `settings.webProtection` from aegis-store.json; on when absent.
+    private static func readEnabled(storePath: String) -> Bool {
+        guard !storePath.isEmpty,
+              let data = FileManager.default.contents(atPath: storePath),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let settings = object["settings"] as? [String: Any],
+              let value = settings["webProtection"] as? Bool
+        else { return true }
+        return value
     }
 }
 
@@ -398,6 +543,7 @@ final class FirewallTelemetry: @unchecked Sendable {
 @objc(AegisFirewall)
 final class AegisFirewall: NEFilterDataProvider {
     private let ruleStore = FirewallRuleStore()
+    private let domainStore = PhishingDomainStore()
     private let telemetry = FirewallTelemetry(path: FirewallPaths.socket)
     private var warnedAboutEndpoint = false
 
@@ -466,10 +612,15 @@ final class AegisFirewall: NEFilterDataProvider {
             log.error("Uzak uç nokta henüz çözümlenemedi — yalnızca protokol/port bağımsız kurallar uygulanabilir")
         }
 
-        guard let ruleID = ruleStore.shouldBlock(host: target.host,
-                                                 port: target.port,
-                                                 proto: target.proto)
-        else { return .allow() }
+        if ruleStore.isAllowed(host: target.host, port: target.port, proto: target.proto) {
+            return .allow()
+        }
+
+        var blockedBy = ruleStore.shouldBlock(host: target.host, port: target.port, proto: target.proto)
+        if blockedBy == nil, !target.host.isEmpty, let hit = domainStore.lookup(host: target.host) {
+            blockedBy = "\(hit.kind):\(hit.domain)"
+        }
+        guard let ruleID = blockedBy else { return .allow() }
 
         log.error("ENGELLENDİ: \(target.host, privacy: .public):\(target.port) [\(target.proto, privacy: .public)] kural=\(ruleID, privacy: .public)")
         report(flow: flow, target: target, ruleID: ruleID)

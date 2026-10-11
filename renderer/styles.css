@@ -591,6 +591,12 @@ label.setting { cursor: pointer; }
 .breach-result.ok { background: var(--success-soft); color: var(--success); }
 .breach-result.bad { background: var(--danger-soft); color: var(--danger); }
 .breach-result.warn { background: var(--warn-soft); color: var(--warn); }
+#page-identity > .panel { margin-top: 16px; }
+.link-reasons { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.link-reasons li { display: flex; gap: 8px; align-items: baseline; font-size: 13px; line-height: 1.45; color: var(--text-2); overflow-wrap: anywhere; }
+.link-reasons li::before { content: ''; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); transform: translateY(-1px); }
+.link-reasons li.danger::before { background: var(--danger); }
+.link-reasons li.warn::before { background: var(--warn); }
 
 .tip-list { padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: var(--text-2); line-height: 1.45; }
 

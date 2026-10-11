@@ -153,8 +153,10 @@ test('sistem denetimi: gerçek macOS komut çıktıları tanınıyor', { skip: !
     const item = r.items.find((i) => i.id === id);
     assert.notEqual(item.status, 'unknown', `${id} çıktısı tanınmadı`);
   }
+  // SIP yalnızca kurtarma modundan açılır; ayar bağlantısı yoktur
   for (const i of r.items) {
-    if (i.status !== 'pass' && i.status !== 'na') assert.match(String(i.settingsUrl), /^x-apple\.systempreferences:/, i.id);
+    if (i.id === 'sip') assert.equal(i.settingsUrl, null);
+    else if (i.status !== 'pass' && i.status !== 'na') assert.match(String(i.settingsUrl), /^x-apple\.systempreferences:/, i.id);
   }
 });
 

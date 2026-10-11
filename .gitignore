@@ -12,3 +12,4 @@ test/*.png
 # C++ motor derleme çıktıları
 native-engine/build/
 native-engine/build-*/
+.rule-cache/

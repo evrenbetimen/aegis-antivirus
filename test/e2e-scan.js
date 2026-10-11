@@ -268,8 +268,87 @@ app.whenReady().then(async () => {
     } catch (err) {
       check('İç içe arşiv taraması (tar.gz → zip → zip)', false, String(err.message || err));
     }
+
+    // macOS yükleyicisi: .pkg içindeki postinstall betiği (gzip'li cpio)
+    try {
+      const { cpioOdc, makeXar } = require('./pkg-fixtures');
+      const zlib = require('zlib');
+      const pkg = path.join(tmp, 'kurulum.pkg');
+      const script = '#!/bin/sh\n' + 'x'.repeat(4000) + ' AEGIS-TEST-MARKER-V1\n';
+      fs.writeFileSync(pkg, makeXar([{ path: 'Scripts', data: zlib.gzipSync(cpioOdc([{ name: './postinstall', data: script }])) }]));
+      const r4 = await scanner.run(
+        { paths: [pkg], heuristics: false, autoQuarantine: false, scanArchives: true, signaturesDir: SIGNATURES_DIR },
+        () => {}
+      );
+      check(
+        '.pkg yükleyici betiği tarandı',
+        r4.threats.length === 1 && /kurulum\.pkg!Scripts\/postinstall$/.test(r4.threats[0].path),
+        `tehdit=${r4.threats.map((t) => t.path).join(',')}`
+      );
+    } catch (err) {
+      check('.pkg yükleyici betiği tarandı', false, String(err.message || err));
+    }
+
+    // .dmg: yalnızca macOS (hdiutil); bağlanır, taranır, ayrılır
+    if (process.platform === 'darwin') {
+      try {
+        const cp = require('child_process');
+        const src = fs.mkdtempSync(path.join(tmp, 'dmgsrc-'));
+        fs.writeFileSync(path.join(src, 'oku.txt'), 'x'.repeat(4000) + ' AEGIS-TEST-MARKER-V1');
+        const dmg = path.join(tmp, 'goruntu.dmg');
+        cp.execFileSync('hdiutil', ['create', '-quiet', '-srcfolder', src, '-format', 'UDZO', '-volname', 'AegisE2E', dmg]);
+        fs.rmSync(src, { recursive: true, force: true });
+        const r5 = await scanner.run(
+          { paths: [dmg], heuristics: false, autoQuarantine: false, scanArchives: true, signaturesDir: SIGNATURES_DIR },
+          () => {}
+        );
+        check(
+          '.dmg disk görüntüsü tarandı ve ayrıldı',
+          r5.threats.length === 1 && /goruntu\.dmg!oku\.txt$/.test(r5.threats[0].path) &&
+            !cp.execFileSync('hdiutil', ['info'], { encoding: 'utf8' }).includes(dmg),
+          `tehdit=${r5.threats.map((t) => t.path).join(',')}`
+        );
+      } catch (err) {
+        check('.dmg disk görüntüsü tarandı ve ayrıldı', false, String(err.message || err));
+      }
+    } else {
+      skip('.dmg disk görüntüsü tarandı ve ayrıldı', 'yalnızca macOS');
+    }
   } else {
     skip('Arşiv içi tarama (sıkıştırılmış içerik)', 'archive modülü henüz yok');
+  }
+
+  // Kimlik avı bağlantısı: .webloc kısayolu ve .eml listelenmiş alana gidiyor
+  try {
+    const phishing = require('../src/phishing');
+    const sigDir = fs.mkdtempSync(path.join(tmp, 'sig-'));
+    fs.writeFileSync(
+      path.join(sigDir, 'db.json'),
+      JSON.stringify({ version: '1', sha256: {}, domains: { phishing: phishing.buildList(['aegis-phish-test.example']), malware: '' } })
+    );
+    const linkDir = fs.mkdtempSync(path.join(tmp, 'links-'));
+    fs.writeFileSync(
+      path.join(linkDir, 'Hesap.webloc'),
+      '<?xml version="1.0"?><plist version="1.0"><dict><key>URL</key><string>https://giris.aegis-phish-test.example/oturum</string></dict></plist>'
+    );
+    fs.writeFileSync(path.join(linkDir, 'temiz.url'), '[InternetShortcut]\nURL=https://example.org/\n');
+    const r6 = await scanner.run(
+      { paths: [linkDir], heuristics: false, autoQuarantine: true, scanArchives: true, signaturesDir: sigDir },
+      () => {}
+    );
+    check(
+      'Kimlik avı bağlantısı işaretlendi (karantinaya alınmadı)',
+      r6.threats.length === 1 && r6.threats[0].path.endsWith('Hesap.webloc') && r6.threats[0].kind === 'phishing' &&
+        !r6.threats[0].quarantined && fs.existsSync(path.join(linkDir, 'Hesap.webloc')),
+      `tehdit=${r6.threats.map((t) => `${path.basename(t.path)}:${t.threat}`).join(',')}`
+    );
+    const r7 = await scanner.run(
+      { paths: [linkDir], heuristics: false, autoQuarantine: true, webLinks: false, signaturesDir: sigDir },
+      () => {}
+    );
+    check('Web koruması kapalıyken bağlantı denetlenmedi', r7.threats.length === 0, `${r7.threats.length} tehdit`);
+  } catch (err) {
+    check('Kimlik avı bağlantısı işaretlendi (karantinaya alınmadı)', false, String(err.message || err));
   }
 
   // İzin verilmeyen dizin raporu (TCC izni emülasyonu)

@@ -27,6 +27,8 @@ const SIG_FILE = 'db.json.sig';
 const RULES_FILE = 'rules.yar';
 const PUBLIC_KEY_FILE = 'db-public.pem';
 const MAX_REDIRECTS = 5;
+// Hash'ler + gömülü YARA + alan adı listeleri; build-db.js bunun altında kalır
+const MAX_DB_DOWNLOAD = 40 * 1024 * 1024;
 
 function isLocalUrl(url) {
   return /^file:\/\//.test(url) || /^http:\/\/(localhost|127\.0\.0\.1)([:/]|$)/.test(url);
@@ -80,8 +82,8 @@ function fetchBuffer(url, timeoutMs = 15000, redirectsLeft = MAX_REDIRECTS) {
       let size = 0;
       res.on('data', (c) => {
         size += c.length;
-        if (size > 20 * 1024 * 1024) {
-          req.destroy(new Error('İmza DB çok büyük (>20MB)'));
+        if (size > MAX_DB_DOWNLOAD) {
+          req.destroy(new Error('İmza DB çok büyük (>40MB)'));
           return;
         }
         chunks.push(c);
@@ -107,6 +109,15 @@ function validateDb(obj) {
     return 'sha256 eşlemesi yok';
   }
   if (obj.yara !== undefined && typeof obj.yara !== 'string') return 'yara alanı metin olmalı';
+  if (obj.domains !== undefined) {
+    if (!obj.domains || typeof obj.domains !== 'object' || Array.isArray(obj.domains)) return 'domains alanı obje olmalı';
+    for (const k of ['phishing', 'malware']) {
+      const v = obj.domains[k];
+      if (v !== undefined && (typeof v !== 'string' || v.length % 11 !== 0 || !/^[A-Za-z0-9_-]*$/.test(v))) {
+        return `domains.${k} biçimi geçersiz`;
+      }
+    }
+  }
   for (const [k, v] of Object.entries(obj.sha256)) {
     if (!/^[0-9a-f]{64}$/i.test(k)) return `Geçersiz hash anahtarı: ${k}`;
     if (typeof v !== 'string') return `Geçersiz imza değeri: ${k}`;

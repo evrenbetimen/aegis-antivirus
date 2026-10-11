@@ -128,8 +128,8 @@ jobs:
 
           Açmak için: .dmg'den uygulamayı Uygulamalar klasörüne sürükleyin, bir kez açmayı deneyin, sonra **Sistem Ayarları → Gizlilik ve Güvenlik → Yine de Aç**'ı seçin.
 
-          - Apple Silicon: \`Aegis-${version}-arm64.dmg\`
-          - Intel: \`Aegis-${version}.dmg\`
+          - Apple Silicon (M1 ve sonrası): adı \`-arm64.dmg\` ile biten dosya
+          - Intel: adında \`arm64\` geçmeyen \`.dmg\`
 
           Otomatik güncelleme yalnızca imzalı sürümlerde çalışır.
           NOTES

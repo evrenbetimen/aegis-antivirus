@@ -54,13 +54,26 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
     (`signatures/rules.yar` + yayındaki gömülü kurallar): metin dizgiler
     (`nocase/ascii/wide/fullword`), hex (`??`, `A?`, `~XX`, `[n-m]` atlama,
     `( AA | BB )`), `uint16(0) == 0x5A4D`, `filesize`, `$a at N`, aritmetik,
-    `N of ($x*)`. Desteklenmeyen yapı (pe/elf modülleri, regex, `for`, `in`)
+    `N of ($x*)`, anonim dizgiler (`$ = ...`). Desteklenmeyen yapı (pe/elf modülleri, regex, `for`, `in`)
     içeren kural **atlanır**, asla yanlış değerlendirilmez
   - **Gerçek imza beslemesi**: saatlik GitHub Actions (`signatures.yml`) —
     MalwareBazaar (abuse.ch, CC0) son örnek hash'leri (kayan pencere, 100k) +
-    ReversingLabs YARA kuralları (MIT; motorun desteklediği ~290 kural) →
+    açık kaynak YARA kural setleri (`signatures/rule-sources.json`) →
     imzalı `db.json` → `signatures` sürümü. Uygulama varsayılan olarak bunu
     6 saatte bir indirir (Ayarlar → Otomatik güncelle)
+  - **Uygulamayla gelen kurallar** (~770 kural, besleme olmadan da çalışır;
+    `npm run build:bundled-db` ile yenilenir). Lisanslar ve kaynak commit'i
+    `db.json → sources` içinde kayıtlıdır:
+
+    | Kaynak | Kapsam | Lisans | Kural |
+    | --- | --- | --- | --- |
+    | [ReversingLabs](https://github.com/reversinglabs/reversinglabs-yara-rules) | `certificate/` hariç | MIT | 293 |
+    | [ditekSHen](https://github.com/ditekshen/detection) | yalnızca `malware.yar` | BSD-2-Clause | 411 |
+    | [bartblaze](https://github.com/bartblaze/Yara-rules) | APT, crimeware, ransomware | MIT | 66 |
+
+    Bilerek alınmayanlar: signature-base (DRL 1.1, eşleşme mesajında yazar
+    gösterimi şartı), Elastic (ELv2), genel/araç/gösterge kuralları (yanlış
+    pozitif riski). 3.413 temiz Linux dosyasında 0 tespit ölçüldü
   - EICAR test dosyası (kodda ham metin yok — AV yarışı için)
   - Sezgisel kurallar: çift uzantı, indirilen Windows binary'leri,
     LaunchAgent kalıcılığı

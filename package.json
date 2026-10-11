@@ -14,6 +14,7 @@
     "postinstall": "node scripts/build-native.js",
     "build:native": "node scripts/build-native.js --strict",
     "build:cli": "cmake -S native-engine -B native-engine/build-cmake && cmake --build native-engine/build-cmake --config Release",
+    "build:bundled-db": "node scripts/build-db.js --out signatures --previous signatures/db.json --rule-sources signatures/rule-sources.json --rule-cache .rule-cache",
     "test:native": "npm run build:cli && ctest --test-dir native-engine/build-cmake --output-on-failure"
   },
   "author": "Aegis Security",

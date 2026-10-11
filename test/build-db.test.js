@@ -80,3 +80,18 @@ test('uçtan uca: CSV + YARA dizini → uygulamanın temiz yüklediği db.json',
   assert.ok(json.sources.some((s) => /MIT License/.test(s.license)), 'lisans bildirimi eksik');
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('--yara-match: yalnız göreli yolu eşleşen kural dosyaları alınır', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aegis-build-'));
+  const rules = path.join(dir, 'rules');
+  fs.mkdirSync(path.join(rules, 'crimeware'), { recursive: true });
+  fs.mkdirSync(path.join(rules, 'generic'), { recursive: true });
+  fs.writeFileSync(path.join(rules, 'crimeware', 'a.yar'), 'rule Keep_Me { strings: $ = "keep-me-marker" condition: any of them }');
+  fs.writeFileSync(path.join(rules, 'generic', 'b.yar'), 'rule Drop_Me { strings: $a = "drop-me-marker" condition: $a }');
+  const out = path.join(dir, 'out');
+  const res = await build.build({ out, yaraDirs: [{ dir: rules, match: /^crimeware\// }], maxHashes: 10, version: '2099.1.2' });
+  assert.equal(res.rules, 1);
+  const db = signatures.load(out);
+  assert.deepEqual(db.rules.map((r) => r.name), ['Keep_Me']);
+  fs.rmSync(dir, { recursive: true, force: true });
+});

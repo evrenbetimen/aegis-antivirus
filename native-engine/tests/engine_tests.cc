@@ -97,6 +97,15 @@ TEST(TextModifiers) {
   CHECK_EQ(Hit("rule U { strings: $a = \"ü\" wide condition: $a }", Bytes({0xfc, 0x00})), std::string("U"));
 }
 
+TEST(AnonymousStrings) {
+  const std::string r =
+      "rule A { strings: $ = \"first-anon\" $ = { 41 42 43 } $n = \"named\" condition: 2 of them }";
+  CHECK_EQ(Hit(r, "xx first-anon yy ABC"), std::string("A"));
+  CHECK_EQ(Hit(r, "ABC"), std::string(""));
+  CHECK_EQ(Hit("rule B { strings: $ = \"x\" condition: any of ($*) }", "x"), std::string("B"));
+  CHECK_EQ(Hit("rule C { strings: $ = \"x\" condition: $ }", "x"), std::string(""));
+}
+
 TEST(HexPatterns) {
   const std::string r = "rule H { strings: $a = { 41 [2-4] 42 ( 43 | 44 45 ) 4? ~00 } condition: $a }";
   CHECK_EQ(Hit(r, Bytes({0x41, 1, 2, 0x42, 0x43, 0x4f, 0x01})), std::string("H"));

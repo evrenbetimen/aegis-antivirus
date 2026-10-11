@@ -122,3 +122,14 @@ rule Tail { condition: uint8(2200000) == 0 }`);
   assert.equal(signatures.checkFile(file, tailOnly), null, 'baş penceresi dışındaki ofset okunmamalı');
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('anonim dizgiler: `$ = ...` them ve ($*) ile sayılır, adlı dizgilerle çakışmaz', () => {
+  const d = db(`rule A { strings: $ = "first-anon" $ = { 41 42 43 } $n = "named" condition: 2 of them }
+rule B { strings: $ = "only-anon" nocase condition: any of ($*) }`);
+  assert.equal(hit(d, 'xx first-anon yy ABC'), 'A');
+  assert.equal(hit(d, 'first-anon named'), 'A');
+  assert.equal(hit(d, 'ABC'), null, 'tek eşleşme yetmez');
+  assert.equal(hit(d, 'ONLY-ANON'), 'B');
+  const bad = signatures.parseYara('rule R { strings: $ = "a" condition: $ }');
+  assert.equal(bad.length, 0, 'anonim dizgi adla anılamaz');
+});

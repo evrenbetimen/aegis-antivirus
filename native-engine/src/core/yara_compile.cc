@@ -836,13 +836,16 @@ class Parser {
   size_t ParseStringDecls(size_t pos, size_t to, Rule* rule) {
     std::unordered_set<std::string> seen;
     for (const auto& s : rule->strings) seen.insert(s.id);
+    int anonymous = 0;
     while (pos < to) {
       const Token& tok = toks_[pos];
       if (IsSectionWord(tok)) break;
-      if (tok.t != Token::kVar) {
+      // Anonim dizgi: `$ = "..."` (iç ad "#N", kaynakta yazılamaz)
+      const bool anon = IsPunct(pos, "$") && IsPunct(pos + 1, "=");
+      if (tok.t != Token::kVar && !anon) {
         throw ParseError("expected a $string declaration, found " + Describe(&tok));
       }
-      const std::string id = tok.v;
+      const std::string id = anon ? "#" + std::to_string(anonymous++) : tok.v;
       if (seen.count(id)) throw ParseError("duplicate string identifier $" + id);
       if (!IsPunct(pos + 1, "=")) throw ParseError("expected \"=\" after $" + id);
       const Token* value = At(pos + 2);

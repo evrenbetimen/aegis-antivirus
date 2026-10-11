@@ -65,8 +65,10 @@ function ruleNames(db) {
 
 test('load: ships the sample signature database', () => {
   const db = signatures.load(REPO_SIG_DIR);
+  const shipped = JSON.parse(fs.readFileSync(path.join(REPO_SIG_DIR, 'db.json'), 'utf8'));
 
-  assert.equal(db.version, '2026.10.1');
+  assert.equal(db.version, shipped.version);
+  assert.ok(db.rules.length >= 700, 'bundled open-source rule sets must load: ' + db.rules.length);
   assert.ok(db.sha256 instanceof Map);
   assert.ok(db.sha256.size >= 2, 'db.json must contain at least 2 sample hashes');
   assert.ok(db.rules.length >= 4, 'rules.yar must contain sample rules');
@@ -82,7 +84,7 @@ test('load: ships the sample signature database', () => {
 
 test('load: defaults to the repository signatures directory', () => {
   const db = signatures.load();
-  assert.equal(db.version, '2026.10.1');
+  assert.equal(db.version, signatures.load(REPO_SIG_DIR).version);
   assert.ok(db.rules.length >= 4);
 });
 

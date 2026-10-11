@@ -1,6 +1,7 @@
 name: İmza veritabanı yayını
 
-# Saatlik: MalwareBazaar "son 60 dk" listesi + ReversingLabs YARA kuralları →
+# Saatlik: MalwareBazaar "son 60 dk" listesi + topluluk YARA kuralları
+# (signatures/rule-sources.json: ReversingLabs, ditekSHen, bartblaze) →
 # imzalı db.json → "signatures" sürümüne yüklenir. Uygulama bu adresi
 # (Ayarlar → İmza veritabanı) varsayılan olarak kullanır ve imzayı doğrular.
 #
@@ -46,9 +47,6 @@ jobs:
             exit 1
           fi
 
-      - name: YARA kural kaynağı (ReversingLabs, MIT)
-        run: git clone --depth 1 https://github.com/reversinglabs/reversinglabs-yara-rules.git "$RUNNER_TEMP/reversinglabs-yara-rules"
-
       - name: Önceki yayını al (kayan hash penceresi)
         run: gh release download signatures --repo "$REPO" --pattern db.json --dir "$RUNNER_TEMP/prev" || echo "önceki yayın yok"
 
@@ -58,7 +56,7 @@ jobs:
           if [ -f "$RUNNER_TEMP/prev/db.json" ]; then PREV=(--previous "$RUNNER_TEMP/prev/db.json"); fi
           node scripts/build-db.js --out "$RUNNER_TEMP/out" "${PREV[@]}" \
             --mb-csv https://bazaar.abuse.ch/export/csv/recent/ \
-            --yara-dir "$RUNNER_TEMP/reversinglabs-yara-rules/yara"
+            --rule-sources signatures/rule-sources.json --rule-cache "$RUNNER_TEMP/rules"
 
       - name: İmzala ve uygulamanın doğrulama yoluyla denetle
         run: |
@@ -77,5 +75,5 @@ jobs:
         run: |
           gh release view signatures --repo "$REPO" >/dev/null 2>&1 || \
             gh release create signatures --repo "$REPO" --title "İmza veritabanı" --latest=false \
-              --notes "Saatlik otomatik imza veritabanı (MalwareBazaar + ReversingLabs YARA). Uygulama .sig dosyasını gömülü açık anahtarla doğrular."
+              --notes "Saatlik otomatik imza veritabanı (MalwareBazaar + topluluk YARA kuralları). Uygulama .sig dosyasını gömülü açık anahtarla doğrular."
           gh release upload signatures --repo "$REPO" "$RUNNER_TEMP/out/db.json" "$RUNNER_TEMP/out/db.json.sha256" "$RUNNER_TEMP/out/db.json.sig" --clobber

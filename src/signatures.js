@@ -607,13 +607,17 @@ function skipParenArgs(tokens, pos, to) {
 
 function parseStringDecls(tokens, pos, to, rule) {
   const seen = new Set(rule.strings.map((s) => s.id));
+  let anonymous = 0;
   while (pos < to) {
     const tok = tokens[pos];
     if (tok.t === 'word' && SECTION_WORDS.has(tok.v)) break;
-    if (tok.t !== 'var') {
+    // Anonim dizgi: `$ = "..."` — yalnızca "them" ve "($*)" ile anılabilir.
+    // İç ad "#N" kaynakta yazılamaz, bu yüzden adlı dizgilerle çakışmaz.
+    const anon = isPunct(tok, '$') && isPunct(tokens[pos + 1], '=');
+    if (tok.t !== 'var' && !anon) {
       throw new ParseError(`expected a $string declaration, found ${describeToken(tok)}`);
     }
-    const id = tok.v;
+    const id = anon ? '#' + anonymous++ : tok.v;
     if (seen.has(id)) throw new ParseError(`duplicate string identifier $${id}`);
     if (!isPunct(tokens[pos + 1], '=')) throw new ParseError(`expected "=" after $${id}`);
 

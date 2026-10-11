@@ -4,11 +4,15 @@
 //   node scripts/build-db.js --out dist-db \
 //     [--previous <db.json yolu|url>] \
 //     [--mb-csv <MalwareBazaar CSV yolu|url>] \
-//     [--yara-dir <dizin>]... [--max-hashes 100000]
+//     [--yara-dir <dizin> [--yara-match <düzenli ifade>]]... [--max-hashes 100000]
+//     [--rule-sources signatures/rule-sources.json --rule-cache <dizin>]
 //
 // - SHA-256: MalwareBazaar "recent" CSV dışa aktarımı (abuse.ch, CC0).
 //   Önceki yayınla birleştirilir; en yeni --max-hashes kayıt tutulur (kayan pencere).
-// - YARA: verilen dizinlerdeki .yar/.yara dosyaları kural kural ayrılır; yalnız
+// - YARA: verilen dizinlerdeki .yar/.yara dosyaları kural kural ayrılır
+//   (--yara-match, kendinden önceki dizinde yalnız göreli yolu eşleşen dosyaları
+//   alır; ör. yanlış pozitif riski yüksek "genel/araç" kurallarını dışarıda
+//   bırakmak için); yalnız
 //   Aegis motorunun TAM desteklediği ve en az bir dizgiye dayanan kurallar alınır
 //   (desteklenmeyen kural asla yanlış değerlendirilmez, ayrıca boyut da küçülür).
 // - Çıktı: <out>/db.json (yara metni db.json içine gömülür → tek imzalı dosya).
@@ -31,12 +35,20 @@ function parseArgs(argv) {
     if (a === '--out') (out.out = v), i++;
     else if (a === '--previous') (out.previous = v), i++;
     else if (a === '--mb-csv') (out.mbCsv = v), i++;
-    else if (a === '--yara-dir') out.yaraDirs.push(v), i++;
+    else if (a === '--yara-dir') out.yaraDirs.push({ dir: v, match: null }), i++;
+    else if (a === '--yara-match') {
+      if (!out.yaraDirs.length) throw new Error('--yara-match bir --yara-dir sonrasında gelmeli');
+      out.yaraDirs[out.yaraDirs.length - 1].match = new RegExp(v);
+      i++;
+    }
+    else if (a === '--rule-sources') (out.ruleSources = v), i++;
+    else if (a === '--rule-cache') (out.ruleCache = v), i++;
     else if (a === '--max-hashes') (out.maxHashes = Number(v)), i++;
     else if (a === '--version') (out.version = v), i++;
     else throw new Error('Bilinmeyen argüman: ' + a);
   }
   if (!out.out) throw new Error('--out gerekli');
+  if (out.ruleSources && !out.ruleCache) throw new Error('--rule-sources için --rule-cache gerekli');
   return out;
 }
 
@@ -180,32 +192,58 @@ function collectYara(dirs) {
   const blocks = [];
   let skipped = 0;
   const notices = [];
-  for (const dir of dirs) {
+  for (const entry of dirs) {
+    const { dir, match } = typeof entry === 'string' ? { dir: entry, match: null } : entry;
     const files = [];
     const walk = (d) => {
       for (const e of fs.readdirSync(d, { withFileTypes: true })) {
         const p = path.join(d, e.name);
         if (e.isDirectory()) walk(p);
-        else if (/\.(yar|yara)$/i.test(e.name)) files.push(p);
+        else if (/\.(yar|yara)$/i.test(e.name) && (!match || match.test(path.relative(dir, p).split(path.sep).join('/')))) files.push(p);
       }
     };
     walk(dir);
     files.sort();
+    let ruleCount = 0;
     for (const f of files) {
       const r = extractSupportedRules(fs.readFileSync(f, 'utf8'), seen);
       blocks.push(...r.kept);
+      ruleCount += r.kept.length;
       skipped += r.skipped;
     }
     // Lisans bildirimi (ör. MIT) DB ile birlikte dağıtılır
     for (const d of [dir, path.dirname(dir)]) {
       const lic = ['LICENSE', 'LICENSE.md', 'LICENSE.txt'].map((n) => path.join(d, n)).find((p) => fs.existsSync(p));
       if (lic) {
-        notices.push({ source: path.basename(path.resolve(d)), license: fs.readFileSync(lic, 'utf8').trim() });
+        const meta = (typeof entry === 'object' && entry.source) || { name: path.basename(path.resolve(d)) };
+        notices.push(Object.assign({}, meta, { source: meta.name, rules: ruleCount, license: fs.readFileSync(lic, 'utf8').trim() }));
         break;
       }
     }
   }
   return { text: blocks.join('\n\n') + (blocks.length ? '\n' : ''), count: blocks.length, skipped, notices };
+}
+
+/**
+ * rule-sources.json'daki depoları (sığ) klonlar; her biri için yara dizini,
+ * dosya süzgeci ve kaynak bilgisi (commit dahil) döndürür.
+ */
+function fetchRuleSources(file, cacheDir) {
+  const { execFileSync } = require('child_process');
+  const cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
+  fs.mkdirSync(cacheDir, { recursive: true });
+  return cfg.sources.map((src) => {
+    const dest = path.join(cacheDir, src.repo.replace(/^.*\/([^/]+?)(\.git)?$/, '$1'));
+    if (!fs.existsSync(path.join(dest, '.git'))) {
+      execFileSync('git', ['clone', '--quiet', '--depth', '1', src.repo, dest], { stdio: 'inherit' });
+    }
+    const commit = execFileSync('git', ['-C', dest, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    return {
+      dir: path.join(dest, src.path),
+      match: src.match ? new RegExp(src.match) : null,
+      source: { name: src.name, url: src.repo.replace(/\.git$/, ''), commit, spdx: src.license }
+    };
+  });
 }
 
 function defaultVersion(now = new Date()) {
@@ -233,7 +271,9 @@ async function build(opts) {
     }
   }
   const sha256 = mergeHashes(previous, fresh, opts.maxHashes);
-  const yara = collectYara(opts.yaraDirs);
+  const yaraDirs = [...(opts.yaraDirs || [])];
+  if (opts.ruleSources) yaraDirs.push(...fetchRuleSources(opts.ruleSources, opts.ruleCache));
+  const yara = collectYara(yaraDirs);
 
   const db = {
     version: opts.version || defaultVersion(),
@@ -241,8 +281,12 @@ async function build(opts) {
     sha256,
     yara: yara.text,
     sources: [
-      { name: 'MalwareBazaar (abuse.ch)', url: 'https://bazaar.abuse.ch', license: 'CC0', newHashes: fresh.length },
-      ...yara.notices.map((n) => ({ name: n.source, license: n.license }))
+      ...(opts.mbCsv ? [{ name: 'MalwareBazaar (abuse.ch)', url: 'https://bazaar.abuse.ch', license: 'CC0', newHashes: fresh.length }] : []),
+      ...yara.notices.map((n) => {
+        const out = { name: n.source, license: n.license, rules: n.rules };
+        if (n.url) Object.assign(out, { url: n.url, commit: n.commit, spdx: n.spdx });
+        return out;
+      })
     ]
   };
   const err = validateDb(db);

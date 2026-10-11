@@ -1,0 +1,26 @@
+{
+  "_comment": "Topluluk YARA kural kaynakları. Yalnız izin verici lisanslı ve düşük yanlış pozitifli kümeler; genel/araç/şüpheli davranış kuralları bilerek dışarıda (meşru dosyaları karantinaya almasın). scripts/build-db.js --rule-sources ile okunur.",
+  "sources": [
+    {
+      "name": "ReversingLabs YARA rules",
+      "repo": "https://github.com/reversinglabs/reversinglabs-yara-rules.git",
+      "path": "yara",
+      "match": "^(?!certificate/)",
+      "license": "MIT"
+    },
+    {
+      "name": "ditekSHen detection (malware)",
+      "repo": "https://github.com/ditekshen/detection.git",
+      "path": "yara",
+      "match": "^malware\\.yar$",
+      "license": "BSD-2-Clause"
+    },
+    {
+      "name": "bartblaze Yara-rules (APT, crimeware, ransomware)",
+      "repo": "https://github.com/bartblaze/Yara-rules.git",
+      "path": "rules",
+      "match": "^(APT|crimeware|ransomware)/",
+      "license": "MIT"
+    }
+  ]
+}

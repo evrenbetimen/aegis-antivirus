@@ -306,7 +306,7 @@
     'set.appUpdate': "App-Updates",
     'set.appUpdate.install': "Neu starten und installieren",
     'set.archives': "Archivscan",
-    'set.archives.sub': "Inhalte von zip-/tar-/gz-Archiven scannen",
+    'set.archives.sub': "Inhalte von zip-/tar-/gz-Archiven und .pkg-/.dmg-Installern scannen",
     'set.autoQuarantine': "Automatische Quarantäne",
     'set.autoQuarantine.sub': "Erkannte Bedrohungen automatisch isolieren",
     'set.dbAuto': "Automatische Signaturupdates",

@@ -306,7 +306,7 @@
     'set.appUpdate': "应用更新",
     'set.appUpdate.install': "重新启动并安装",
     'set.archives': "压缩包扫描",
-    'set.archives.sub': "扫描 zip/tar/gz 压缩包内部",
+    'set.archives.sub': "扫描 zip/tar/gz 压缩包和 .pkg/.dmg 安装程序内部",
     'set.autoQuarantine': "自动隔离",
     'set.autoQuarantine.sub': "自动隔离检测到的威胁",
     'set.dbAuto': "自动更新特征库",

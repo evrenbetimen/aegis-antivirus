@@ -306,7 +306,7 @@
     'set.appUpdate': "アプリのアップデート",
     'set.appUpdate.install': "再起動してインストール",
     'set.archives': "アーカイブのスキャン",
-    'set.archives.sub': "zip/tar/gz アーカイブの内部をスキャンします",
+    'set.archives.sub': "zip/tar/gz アーカイブと .pkg/.dmg インストーラの内部をスキャンします",
     'set.autoQuarantine': "自動隔離",
     'set.autoQuarantine.sub': "検出された脅威を自動的に隔離します",
     'set.dbAuto': "シグネチャの自動アップデート",

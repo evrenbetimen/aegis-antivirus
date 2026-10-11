@@ -306,7 +306,7 @@
     'set.appUpdate': "Обновления программы",
     'set.appUpdate.install': "Перезапустить и установить",
     'set.archives': "Сканирование архивов",
-    'set.archives.sub': "Сканировать содержимое архивов zip/tar/gz",
+    'set.archives.sub': "Сканировать содержимое архивов zip/tar/gz и установщиков .pkg/.dmg",
     'set.autoQuarantine': "Автоматический карантин",
     'set.autoQuarantine.sub': "Автоматически изолировать обнаруженные угрозы",
     'set.dbAuto': "Автоматическое обновление сигнатур",

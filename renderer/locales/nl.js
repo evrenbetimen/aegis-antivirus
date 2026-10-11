@@ -306,7 +306,7 @@
     'set.appUpdate': "App-updates",
     'set.appUpdate.install': "Herstart en installeer",
     'set.archives': "Archieven scannen",
-    'set.archives.sub': "Inhoud van zip/tar/gz-archieven scannen",
+    'set.archives.sub': "Inhoud van zip/tar/gz-archieven en .pkg/.dmg-installatieprogramma’s scannen",
     'set.autoQuarantine': "Automatische quarantaine",
     'set.autoQuarantine.sub': "Gedetecteerde bedreigingen automatisch isoleren",
     'set.dbAuto': "Automatische handtekeningupdates",

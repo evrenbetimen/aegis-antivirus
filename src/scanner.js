@@ -466,6 +466,9 @@ const NESTED_MAX_DEPTH = 3;
 const NESTED_MAX_BYTES = 30 * 1024 * 1024; // tek iç arşiv
 const ARCHIVE_TOTAL_ENTRIES = 300;
 const ARCHIVE_TOTAL_BYTES = 200 * 1024 * 1024;
+// .pkg / .dmg içinde uygulama paketleri binlerce dosya taşır
+const INSTALLER_TOTAL_ENTRIES = 5000;
+const INSTALLER_TOTAL_BYTES = 1024 * 1024 * 1024;
 
 /**
  * Arşiv içindeki girdileri imza/YARA/EICAR ile tarar; iç içe arşivlere
@@ -476,7 +479,12 @@ const ARCHIVE_TOTAL_BYTES = 200 * 1024 * 1024;
  */
 async function scanArchiveFile(file, db, opts, report, emit) {
   if (!archive || !archive.scanEntries) return null;
-  const ctx = { entriesLeft: ARCHIVE_TOTAL_ENTRIES, bytesLeft: ARCHIVE_TOTAL_BYTES, tmpDir: null };
+  const big = /\.(pkg|mpkg|dmg)$/i.test(file);
+  const ctx = {
+    entriesLeft: big ? INSTALLER_TOTAL_ENTRIES : ARCHIVE_TOTAL_ENTRIES,
+    bytesLeft: big ? INSTALLER_TOTAL_BYTES : ARCHIVE_TOTAL_BYTES,
+    tmpDir: null
+  };
   let hit = null;
   try {
     hit = await scanArchiveLayer(file, file, 0, db, report, emit, ctx);

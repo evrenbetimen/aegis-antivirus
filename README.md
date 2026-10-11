@@ -20,6 +20,7 @@ Modül testleri (electron gerektirmez):
 node --test test/signatures.test.js   # imza DB + YARA motoru
 node --test test/yara-engine.test.js  # genişletilmiş YARA yapıları
 node --test test/build-db.test.js     # imza DB üretim hattı
+node --test test/installer.test.js    # .pkg / .dmg yükleyici taraması
 node --test test/archive.test.js      # arşiv tarama (zip/tar/gz)
 node --test test/cache.test.js        # hash önbelleği
 node --test test/dbupdate.test.js     # imza DB güncelleme (Ed25519, yönlendirme, dizin)
@@ -79,6 +80,12 @@ npm start -- --page=scan --capture=/tmp/ekran.png   # sayfayı görsel olarak ka
     LaunchAgent kalıcılığı
   - **Arşiv taraması** (zip/tar/tar.gz/gz/bz2) — dosya çıkarmadan, akışla;
     zip-slip imkânsız, girdi/bayt/süre sınırları, şifreli girdiler atlanır
+  - **macOS yükleyici taraması** (`src/installer.js`): `.pkg` saf JS xar
+    okuyucusuyla açılır; Distribution, preinstall/postinstall betikleri ve
+    yükteki (gzip cpio) her dosya taranır, Apple'ın pbzx yükleri macOS'ta
+    `pkgutil --expand-full` ile. `.dmg` macOS'ta `hdiutil` ile salt okunur ve
+    Finder'da görünmeden bağlanır, taranır, her durumda ayrılır; şifreli
+    görüntüler parola sormamak için atlanır
   - **Hash önbelleği** (inode+mtime+size → SHA-256): ikinci tarama ~10x hızlı
   - **Paralel tarama** — 8'den fazla dosyada worker thread havuzu (CPU
     çekirdeği kadar paralel hash + imza taraması); 800×128KB ölçümünde

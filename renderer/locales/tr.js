@@ -306,7 +306,7 @@
     'set.appUpdate': "Uygulama güncellemeleri",
     'set.appUpdate.install': "Yeniden başlat ve kur",
     'set.archives': "Arşiv taraması",
-    'set.archives.sub': "zip/tar/gz içeriğini de tara",
+    'set.archives.sub': "zip/tar/gz arşivlerinin ve .pkg/.dmg yükleyicilerinin içini de tara",
     'set.autoQuarantine': "Otomatik karantina",
     'set.autoQuarantine.sub': "Tespit edilen tehditleri otomatik izole et",
     'set.dbAuto': "Otomatik imza güncellemesi",

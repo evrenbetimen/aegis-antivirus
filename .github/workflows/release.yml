@@ -23,10 +23,11 @@ on:
         description: 'İmzasız test derlemesi (Apple sırları gerekmez)'
         type: boolean
         default: true
-      prerelease:
-        description: 'İmzasız derlemeyi GitHub''da ön sürüm (prerelease) olarak yayınla'
-        type: boolean
-        default: false
+      publish:
+        description: 'İmzasız derlemeyi GitHub''da yayınla'
+        type: choice
+        options: [none, prerelease, release]
+        default: none
 
 permissions:
   contents: write
@@ -128,17 +129,31 @@ jobs:
       # Etiket GITHUB_TOKEN ile oluşur, bu yüzden v* tetikleyicisini (imzalı
       # yol) yeniden çalıştırmaz. latest-mac.yml yüklenmez: otomatik
       # güncelleme yalnızca imzalı sürümleri izler.
-      - name: Publish unsigned prerelease
-        if: github.event_name == 'workflow_dispatch' && inputs.unsigned && inputs.prerelease
+      # release: v<sürüm> etiketiyle normal (en son) sürüm; prerelease:
+      # v<sürüm>-beta.<çalıştırma no> etiketiyle ön sürüm.
+      - name: Publish unsigned build
+        if: github.event_name == 'workflow_dispatch' && inputs.unsigned && inputs.publish != 'none'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version=$(node -p "require('./package.json').version")
-          tag="v${version}-beta.${GITHUB_RUN_NUMBER}"
+          if [ "${{ inputs.publish }}" = release ]; then
+            tag="v${version}"
+            flags=(--latest)
+            title="Aegis ${version}"
+          else
+            tag="v${version}-beta.${GITHUB_RUN_NUMBER}"
+            flags=(--prerelease)
+            title="Aegis ${version} (imzasız test)"
+          fi
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::$tag sürümü zaten var; package.json sürümünü yükseltin"
+            exit 1
+          fi
           cat > "$RUNNER_TEMP/notes.md" <<NOTES
-          **İmzasız test sürümü.** Apple Developer ID ile imzalanmadığı ve notarize edilmediği için macOS ilk açılışta uygulamayı engeller.
+          **İmzasız sürüm.** Apple Developer ID ile imzalanmadığı ve notarize edilmediği için macOS ilk açılışta uygulamayı engeller.
 
-          Açmak için: .dmg'den uygulamayı Uygulamalar klasörüne sürükleyin, bir kez açmayı deneyin, sonra **Sistem Ayarları → Gizlilik ve Güvenlik → Yine de Aç**'ı seçin.
+          Açmak için: .dmg'den uygulamayı Uygulamalar klasörüne sürükleyin, bir kez açmayı deneyin, sonra **Sistem Ayarları → Gizlilik ve Güvenlik → Yine de Aç**'ı seçin. "Hasarlı" uyarısı çıkarsa Terminal'de: \`xattr -cr /Applications/aegis-antivirus.app\`
 
           - Apple Silicon (M1 ve sonrası): adı \`-arm64.dmg\` ile biten dosya
           - Intel: adında \`arm64\` geçmeyen \`.dmg\`
@@ -146,9 +161,9 @@ jobs:
           Otomatik güncelleme yalnızca imzalı sürümlerde çalışır.
           NOTES
           gh release create "$tag" dist/*.dmg dist/*.zip \
-            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
-            --title "Aegis ${version} (imzasız test)" --notes-file "$RUNNER_TEMP/notes.md"
-          echo "::notice::Ön sürüm yayınlandı: $tag"
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" "${flags[@]}" \
+            --title "$title" --notes-file "$RUNNER_TEMP/notes.md"
+          echo "::notice::Yayınlandı: $tag"
 
       - uses: actions/upload-artifact@v4
         with:

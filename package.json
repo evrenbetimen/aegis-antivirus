@@ -10,6 +10,7 @@
     "icon": "env -u NODE_OPTIONS electron scripts/make-icon.js",
     "bench": "env -u NODE_OPTIONS electron test/bench-scan.js",
     "dist": "electron-builder --mac --publish never",
+    "dist:adhoc": "electron-builder --mac --publish never -c.mac.identity=- -c.mac.hardenedRuntime=false -c.mac.notarize=false",
     "release": "electron-builder --mac --publish always",
     "postinstall": "node scripts/build-native.js",
     "build:native": "node scripts/build-native.js --strict",

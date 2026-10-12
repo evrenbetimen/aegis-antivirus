@@ -107,11 +107,23 @@ jobs:
 
       # Ad-hoc imza ("-"): Apple Silicon imzasız ikiliyi hiç çalıştırmaz.
       # Developer ID ve notarization olmadığı için Gatekeeper ilk açılışta uyarır.
+      # Hardened runtime kapalı: açıkken kütüphane doğrulaması Team ID'si boş
+      # olan ad-hoc imzalı Electron Framework'ü reddeder ve uygulama açılışta
+      # dyld "different Team IDs" hatasıyla çöker.
       - name: Unsigned test build
         if: github.event_name == 'workflow_dispatch' && inputs.unsigned
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx electron-builder --mac --arm64 --x64 --publish never -c.mac.identity=- -c.mac.notarize=false
+        run: npm run dist:adhoc -- --arm64 --x64
+
+      # dyld, Electron Framework'ü JS çalışmadan önce yükler; imza tutarsızsa
+      # bu adım uygulamanın açılışta çöktüğü yerde düşer.
+      - name: Verify ad-hoc build launches
+        if: github.event_name == 'workflow_dispatch' && inputs.unsigned
+        run: |
+          app=$(ls -d dist/mac-arm64/*.app | head -1)
+          codesign --verify --deep --strict --verbose=2 "$app"
+          ELECTRON_RUN_AS_NODE=1 "$app/Contents/MacOS/$(basename "$app" .app)" -e 'console.log("launch ok", process.versions.electron)'
 
       # Etiket GITHUB_TOKEN ile oluşur, bu yüzden v* tetikleyicisini (imzalı
       # yol) yeniden çalıştırmaz. latest-mac.yml yüklenmez: otomatik
